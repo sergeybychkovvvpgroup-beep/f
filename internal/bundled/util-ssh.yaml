@@ -1,2 +1,0 @@
-- desc: ssh to host
-  cmd: ssh root@192.168.1.10

@@ -312,21 +312,18 @@ func renderConfig(cfg File) string {
 		cfg.PickerHeight = DefaultFile().PickerHeight
 	}
 	lines := []string{
-		"# aoo",
-		"# themes: fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
+		"# f / aoo — SSH host picker",
+		"# hosts are stored in ~/.config/aoo/hosts.yaml",
+		"# themes: auto, fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
-		"# show_match_context: preview line for selected item",
 		"# show_list_on_start: render results when query is empty",
-		"# two_line_results: desc on first line, command/text on second line",
-		"notes_dir: " + yamlScalar(cfg.NotesDir),
-		"notes_repo: " + yamlScalar(cfg.NotesRepo),
+		"# two_line_results: host on first line, ssh command on second line",
 		"theme: " + yamlScalar(cfg.Theme),
 		"layout: " + yamlScalar(cfg.Layout),
 		"full_screen: " + yamlScalarBool(cfg.FullScreen),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),
 		"focus_mode: " + yamlScalarBool(cfg.FocusMode),
-		"show_match_context: " + yamlScalarBool(cfg.ShowMatchContext),
 		"show_list_on_start: " + yamlScalarBool(cfg.ShowListOnStart),
 		"two_line_results: " + yamlScalarBool(cfg.TwoLineResults),
 		"",
@@ -342,6 +339,8 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 		"search_mode:",
 		"show_preview:",
 		"show_notes_on_start:",
+		"notes_dir:",
+		"notes_repo:",
 		"# search_mode:",
 	}
 	for _, marker := range legacyMarkers {
@@ -350,9 +349,6 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 		}
 	}
 
-	if !strings.Contains(text, "show_match_context:") {
-		return true
-	}
 	if !strings.Contains(text, "focus_mode:") {
 		return true
 	}

@@ -73,14 +73,14 @@ func Filter(entries []Entry, query string) []Match {
 func resolveSearchMode(query string) (string, string) {
 	trimmedQuery := strings.TrimSpace(query)
 	if trimmedQuery == "" {
-		return SearchModeNoteOnly, ""
+		return SearchModeCommandOnly, ""
 	}
 
 	switch trimmedQuery[0] {
 	case ':', '>':
 		return SearchModeCommandOnly, strings.TrimSpace(trimmedQuery[1:])
 	default:
-		return SearchModeNoteOnly, trimmedQuery
+		return SearchModeCommandOnly, trimmedQuery
 	}
 }
 
@@ -139,7 +139,7 @@ func commandOnlyPresentation(entry Entry) (string, string) {
 
 	switch {
 	case action.IsCmd():
-		return oneLine(action.Cmd, 120), detail
+		return entry.DisplayName(), oneLine(action.Cmd, 120)
 	default:
 		return entry.DisplayName(), action.DisplayValue()
 	}

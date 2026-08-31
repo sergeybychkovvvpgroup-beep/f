@@ -1,91 +1,53 @@
-# f
+# f / aoo
 
-Терминальная утилита для заметок и запуска команд. Раньше проект назывался `aoo`; `aoo` всё ещё ставится как совместимый symlink.
+Минималистичная утилита для быстрого SSH-входа на хосты.
 
-## Установка
+Запускаешь `f`, вводишь пару ключевых слов, выбираешь вариант входа, `Enter` — сразу `ssh`.
+Поиск всегда по SSH-командам: префиксы `:` и `>` больше не нужны, но не ломаются.
 
-```bash
-make build
-sudo make install
-```
-
-## Конфиг
-
-Файл: `~/.config/aoo/config.yaml`
-
-Минимальный пример:
-
-```yaml
-notes_dir: ~/.local/share/aoo/notes
-theme: fzf-dark
-layout: bottom
-full_screen: true
-picker_height: 14
-focus_mode: false
-show_match_context: false
-show_list_on_start: true
-two_line_results: true
-```
-
-Что значат ключи:
-
-- `focus_mode` скрывает нижнюю строку с хоткеями для более спокойного интерфейса
-- `show_match_context` показывает строку с найденным фрагментом у выбранной записи
-- `show_list_on_start` сразу показывает список при пустом запросе
-- `two_line_results` включает двухстрочный список; если `false`, `desc` и команда/текст идут в одной строке
-
-Проверка:
+## Главное
 
 ```bash
-f config
-f config show
+f             # fuzzy-поиск и вход
+f prod db     # открыть сразу с запросом "prod db"
 ```
 
-## Использование
+Добавление нового варианта входа прямо из интерфейса:
+
+```text
+Ctrl+N        # add new login
+```
+
+После `Ctrl+N` откроется интерактивное заполнение: alias, host, user, port, tags, description.
+
+## Дополнительно
 
 ```bash
-f
-f --query ssh
-f validate --dir ~/.local/share/aoo/notes
-f add "router dhcp"
-f add cmd "restart nginx"
-f upgrade
+f add NAME HOST      # неинтерактивное добавление, если удобно из скрипта
+f list               # показать все хосты/ssh-команды
+f config show        # показать пути файлов
 ```
 
-Горячие клавиши:
+Примеры:
 
-- `Enter` открыть или выполнить
-- `Alt+Enter` или `Ctrl+Y` вывести команду в терминал без запуска, чтобы скопировать (`Ctrl+Enter` тоже поддержан, если терминал умеет отличать его от обычного Enter)
-- `Ctrl+E` редактировать запись
-- `Ctrl+N` создать новую запись из текущего запроса
-- `Esc` выйти
-
-## Формат заметок
-
-Лучше хранить одну заметку в одном файле, например `ssh-router.yaml`:
-
-```yaml
-desc: ssh router
-actions:
-  - desc: основной доступ
-    text: ssh-команда для роутера
-  - desc: подключиться
-    cmd: ssh admin@router
+```bash
+f add nas root@192.168.88.10 --tag home --desc "домашний NAS"
+f add db 10.20.30.40 -user admin -p 2222 --tag prod --args "-A -J jump"
 ```
 
-Простой файл с одной командой тоже валиден:
+Записи хранятся в одном файле:
 
-```yaml
-desc: nginx logs
-cmd: journalctl -u nginx -n 100
+```text
+~/.config/aoo/hosts.yaml
 ```
 
-Если у записи есть `cmd`, `Enter` запускает команду. Если есть только `text`, `Enter` показывает заметку.
+Алиасы из `~/.ssh/config` подхватываются автоматически.
 
-Обычный ввод ищет заметки и файлы. `:query` или `>query` ищет только команды.
+## Клавиши
 
-## Raw-файлы
-
-Можно хранить сниппеты как обычные файлы: `netplan.yaml`, `bgp.conf`, `notes.md`.
-
-`aoo` покажет их в поиске и откроет содержимое как заметку.
+- ввод — фильтр
+- `↑/↓` или `ctrl+k/ctrl+j` — выбор
+- `Enter` — ssh
+- `Ctrl+N` — добавить новый вариант входа
+- `Alt+Enter` / `Ctrl+Y` — вывести команду без запуска
+- `Esc` / `Ctrl+C` — выйти

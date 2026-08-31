@@ -1,6 +1,0 @@
-- desc: f set source
-  action: f set-source
-- desc: f config edit
-  action: f config
-- desc: f config show
-  action: f config show

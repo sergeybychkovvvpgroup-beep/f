@@ -1,7 +1,0 @@
-- desc: aoo notes git pull
-  cmd: git -C ~/.local/share/aoo/notes pull --rebase
-- desc: aoo notes git add commit push
-  cmd: |-
-    git -C ~/.local/share/aoo/notes add .
-    git -C ~/.local/share/aoo/notes commit -m "update notes"
-    git -C ~/.local/share/aoo/notes push

@@ -29,8 +29,8 @@ test:
 	@echo "[test] done"
 
 validate: build
-	@echo "[validate] checking notes in ./examples/notes"
-	@./bin/$(APP) validate --dir ./examples/notes
+	@echo "[validate] binary built; run ./bin/$(APP) add to add hosts"
+	@./bin/$(APP) version
 	@echo "[validate] done"
 
 tidy:

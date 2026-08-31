@@ -1,2 +1,0 @@
-- desc: curl check url headers
-  cmd: curl -kI https://example.local:8443

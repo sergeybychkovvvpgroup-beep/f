@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,33 +12,27 @@ import (
 	"strconv"
 	"strings"
 
-	"aoo/internal/bundled"
 	"aoo/internal/config"
-	"aoo/internal/notecreate"
+	"aoo/internal/hosts"
 	"aoo/internal/notes"
-	"aoo/internal/notesrepo"
 	"aoo/internal/ui"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) > 0 {
 		switch args[0] {
-		case "validate":
-			return runValidate(args[1:], stdout, stderr)
-		case "themes":
-			return runThemes(stdout)
+		case "add":
+			return runAdd(args[1:], stdin, stdout, stderr)
+		case "list", "ls":
+			return runList(stdout)
 		case "config":
 			return runConfig(args[1:], stdout, stderr)
-		case "set-source":
-			return runSetSource(stdin, stdout, stderr)
-		case "set-folder":
-			return runSetFolder(args[1:], stdout, stderr)
+		case "themes":
+			return runThemes(stdout)
 		case "set-theme":
 			return runSetTheme(args[1:], stdout, stderr)
-		case "add":
-			return runAdd(args[1:], stdout, stderr)
 		case "upgrade":
 			return runUpgrade(args[1:], stdout, stderr)
 		case "version", "--version", "-v":
@@ -48,224 +43,78 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return nil
 		}
 	}
-
-	return runInteractive(args, stdin, stdout, stderr)
+	return runInteractive(args, stdout, stderr)
 }
 
-func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) (err error) {
-	fs := flag.NewFlagSet("aoo", flag.ContinueOnError)
+func runInteractive(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("f", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-
-	dir := fs.String("dir", "", "directory with YAML notes")
 	query := fs.String("query", "", "initial search query")
 	themeFlag := fs.String("theme", "", "theme name")
-	strict := fs.Bool("strict", false, "fail when any note file has validation errors")
-
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-
-	if message, ok := repoUpdateHint(); ok {
-		fmt.Fprintf(stdout, "[aoo] %s\n", message)
+	if strings.TrimSpace(*query) == "" && fs.NArg() > 0 {
+		*query = strings.Join(fs.Args(), " ")
 	}
 
 	cfg, err := config.Load()
 	if err != nil {
 		return err
 	}
-
-	root, _, err := config.ResolveNotesDir(*dir)
-	if err != nil {
-		if _, ok := err.(config.SetupRequiredError); ok && strings.TrimSpace(*dir) == "" {
-			root = ""
-		} else {
-			return err
-		}
-	}
-
-	var syncStream <-chan ui.SyncStatus
-	if strings.TrimSpace(root) != "" {
-		syncStream = startNotesSync(root)
-	}
-
 	themeName, _, err := config.ResolveTheme(*themeFlag)
 	if err != nil {
 		return err
 	}
-
-	uiOptions := ui.Options{
-		FullScreen:        cfg.FullScreen,
-		Height:            cfg.PickerHeight,
-		FocusMode:         cfg.FocusMode,
-		ShowMatchContext:  cfg.ShowMatchContext,
-		ShowListOnStart:   cfg.ShowListOnStart,
-		SingleLineResults: !cfg.TwoLineResults,
-		Layout:            cfg.Layout,
-		SyncStatusStream:  syncStream,
-	}
-	if syncStream != nil {
-		uiOptions.InitialSync = ui.SyncStatus{State: ui.SyncStateRunning}
-	}
-	if uiOptions.FullScreen {
-		uiOptions.Height = 0
-	}
-
-	currentQuery := *query
-	hasActiveUI := false
-	for {
-		result, err := loadInteractiveEntries(root, *strict, stderr)
-		if err != nil {
-			return err
-		}
-		if hasActiveUI && !uiOptions.FullScreen {
-			clearInteractiveArea(stdout, uiOptions.Height)
-		}
-		selected, selectedLine, nextQuery, cancelled, editRequested, printOnlyRequested, createKind, err := ui.RunPicker(result.Entries, currentQuery, themeName, uiOptions)
-		hasActiveUI = true
-		currentQuery = nextQuery
-		if err != nil {
-			return err
-		}
-		if createKind != "" {
-			if strings.TrimSpace(root) == "" {
-				return errors.New("notes_dir is not configured")
-			}
-			if err := createAndEditDraft(root, notecreate.Kind(createKind), currentQuery, stdout, stderr); err != nil {
-				return err
-			}
-			continue
-		}
-		if cancelled || selected == nil {
-			return nil
-		}
-		if editRequested {
-			if err := openEntryInEditor(*selected, selectedLine, stdout, stderr); err != nil {
-				return err
-			}
-			continue
-		}
-
-		if action := selected.QuickAction(); action != nil {
-			if printOnlyRequested {
-				return printActionCommand(*selected, action, stdout)
-			}
-			switch {
-			case action.IsShow():
-				printActionText(*selected, action, stdout)
-				return nil
-			case action.IsCmd():
-				return runCommand(*selected, action, stdin, stdout, stderr)
-			}
-		}
-
-		if !uiOptions.FullScreen {
-			clearInteractiveArea(stdout, uiOptions.Height)
-		}
-		action, cancelled, actionPrintOnly, err := ui.RunActionPicker(*selected, themeName, uiOptions)
-		if err != nil {
-			return err
-		}
-		if cancelled || action == nil {
-			continue
-		}
-
-		if printOnlyRequested || actionPrintOnly {
-			return printActionCommand(*selected, action.Action, stdout)
-		}
-
-		switch action.Kind {
-		case ui.ActionRead:
-			printActionText(*selected, action.Action, stdout)
-			return nil
-		case ui.ActionRun:
-			return runCommand(*selected, action.Action, stdin, stdout, stderr)
-		default:
-			return fmt.Errorf("unknown action: %s", action.Kind)
-		}
-	}
-}
-
-func clearInteractiveArea(stdout io.Writer, height int) {
-	rows := height
-	if rows < 6 {
-		rows = 6
-	}
-	rows += 2
-	fmt.Fprintf(stdout, "\r\x1b[%dA\x1b[J", rows)
-}
-
-func startNotesSync(root string) <-chan ui.SyncStatus {
-	result := make(chan ui.SyncStatus, 1)
-	go func() {
-		defer close(result)
-		if err := notesrepo.Sync(root, io.Discard, io.Discard); err != nil {
-			result <- ui.SyncStatus{State: ui.SyncStateError, Message: shortError(err)}
-			return
-		}
-		result <- ui.SyncStatus{State: ui.SyncStateOK}
-	}()
-	return result
-}
-
-func shortError(err error) string {
-	if err == nil {
-		return ""
-	}
-	text := strings.TrimSpace(err.Error())
-	if text == "" {
-		return "unknown error"
-	}
-	if line := strings.TrimSpace(strings.Split(text, "\n")[0]); line != "" {
-		return line
-	}
-	return text
-}
-
-func runValidate(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	dir := fs.String("dir", "", "directory with YAML notes")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-
-	root, _, err := config.ResolveNotesDir(*dir)
+	list, err := hosts.Load()
 	if err != nil {
 		return err
 	}
 
-	result := notes.LoadDir(root)
-	if len(result.Errors) == 0 {
-		_, err = fmt.Fprintf(stdout, "OK: %d entries loaded from %s\n", len(result.Entries), root)
+	options := ui.Options{
+		FullScreen:        cfg.FullScreen,
+		Height:            cfg.PickerHeight,
+		FocusMode:         cfg.FocusMode,
+		ShowMatchContext:  false,
+		ShowListOnStart:   cfg.ShowListOnStart,
+		SingleLineResults: !cfg.TwoLineResults,
+		Layout:            cfg.Layout,
+	}
+	if options.FullScreen {
+		options.Height = 0
+	}
+
+	selected, _, nextQuery, cancelled, editRequested, printOnly, createKind, err := ui.RunPicker(hosts.ToEntries(list), *query, themeName, options)
+	if err != nil || cancelled || editRequested {
 		return err
 	}
-
-	for _, loadErr := range result.Errors {
-		fmt.Fprintf(stderr, "ERROR: %v\n", loadErr)
+	if createKind != "" {
+		saved, err := promptAndSaveHost(nextQuery, stdout, stderr)
+		if err != nil {
+			return err
+		}
+		entries := hosts.ToEntries([]hosts.Host{saved})
+		selected = &entries[0]
 	}
-	return fmt.Errorf("validation failed: %d file(s) with errors", len(result.Errors))
-}
-
-func loadBundledNotes() notes.LoadResult {
-	return bundled.Load()
-}
-
-func runCommand(entry notes.Entry, action *notes.Action, stdin io.Reader, stdout, stderr io.Writer) error {
+	if selected == nil {
+		return nil
+	}
+	action := selected.QuickAction()
 	if action == nil || !action.IsCmd() {
-		return errors.New("selected action is not a command action")
+		return errors.New("selected entry has no ssh command")
 	}
-	command := strings.TrimSpace(action.Cmd)
-	banner := strings.TrimSpace(action.Banner)
-	desc := runHeader(entry, action)
+	if printOnly {
+		fmt.Fprintln(stdout, strings.TrimSpace(action.Cmd))
+		return nil
+	}
+	return runCommand(*selected, action, stdout, stderr)
+}
 
-	if err := promptCommandRun(desc, command, stdout); err != nil {
+func runCommand(entry notes.Entry, action *notes.Action, stdout, stderr io.Writer) error {
+	command := strings.TrimSpace(action.Cmd)
+	if err := promptCommandRun(runHeader(entry, action), command, stdout); err != nil {
 		return err
 	}
-
-	if banner := strings.TrimSpace(banner); banner != "" {
-		fmt.Fprintln(stdout, renderBanner(desc, banner))
-	}
-
 	cmd := exec.Command("/bin/sh", "-lc", command)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = stdout
@@ -279,7 +128,7 @@ func runHeader(entry notes.Entry, action *notes.Action) string {
 		return base
 	}
 	suffix := strings.TrimSpace(action.Desc)
-	if suffix == "" || strings.EqualFold(base, suffix) {
+	if suffix == "" || strings.EqualFold(base, suffix) || suffix == "ssh" {
 		return base
 	}
 	return fmt.Sprintf("%s :: %s", base, suffix)
@@ -291,96 +140,136 @@ func promptCommandRun(desc, command string, stdout io.Writer) error {
 	return nil
 }
 
-func runConfig(args []string, stdout, stderr io.Writer) error {
-	if len(args) == 0 {
-		return openConfigInEditor(stdout, stderr)
+func runList(stdout io.Writer) error {
+	list, err := hosts.Load()
+	if err != nil {
+		return err
 	}
-
-	switch args[0] {
-	case "show":
-		return runConfigShow(stdout)
-	case "set-source":
-		return runSetSource(os.Stdin, stdout, stderr)
-	case "set-folder":
-		return runSetFolder(args[1:], stdout, stderr)
-	case "set-theme":
-		return runSetTheme(args[1:], stdout, stderr)
-	default:
-		return fmt.Errorf("unknown config subcommand: %s", args[0])
+	for _, h := range list {
+		fmt.Fprintf(stdout, "%-24s %s\n", h.Name, h.Command())
 	}
+	return nil
 }
 
-func runSetSource(stdin io.Reader, stdout, stderr io.Writer) error {
-	_, err := notesrepo.SetupSource(stdin, stdout, stderr)
-	return err
-}
-
-func runSetFolder(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("set-folder", flag.ContinueOnError)
+func runAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("add", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	user := fs.String("user", "", "ssh user")
+	port := fs.Int("p", 0, "ssh port")
+	portLong := fs.Int("port", 0, "ssh port")
+	tags := multiFlag{}
+	fs.Var(&tags, "tag", "search tag (repeatable)")
+	desc := fs.String("desc", "", "description")
+	sshArgs := fs.String("args", "", "extra ssh args")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
-	if fs.NArg() != 1 {
-		return errors.New("usage: aoo set-folder /path/to/notes")
+	h := hosts.Host{User: *user, Port: *port, Tags: tags, Desc: *desc, Args: *sshArgs}
+	if *portLong > 0 {
+		h.Port = *portLong
 	}
-
-	path, err := config.SetNotesDir(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-
-	configPath, err := config.ConfigPath()
-	if err != nil {
-		return err
-	}
-
-	_, err = fmt.Fprintf(stdout, "configured notes_dir: %s\nconfig file: %s\n", path, configPath)
-	return err
-}
-
-func runConfigShow(stdout io.Writer) error {
-	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-
-	configPath, err := config.ConfigPath()
-	if err != nil {
-		return err
-	}
-
-	root, source, resolveErr := config.ResolveNotesDir("")
-	if resolveErr != nil {
-		if _, ok := resolveErr.(config.SetupRequiredError); ok {
-			root = ""
-			source = "not configured"
-		} else {
-			return resolveErr
+	rest := fs.Args()
+	if len(rest) >= 2 {
+		h.Name = rest[0]
+		h.Host = rest[1]
+	} else {
+		var err error
+		h, err = promptHost(stdin, stdout, h)
+		if err != nil {
+			return err
 		}
 	}
 
-	themeName, themeSource, themeErr := config.ResolveTheme("")
-	if themeErr != nil {
-		return themeErr
+	saved, err := hosts.Add(h)
+	if err != nil {
+		return err
 	}
-	fmt.Fprintf(stdout, "config file: %s\n", configPath)
-	fmt.Fprintf(stdout, "notes_dir: %s\n", emptyIfUnset(cfg.NotesDir))
-	fmt.Fprintf(stdout, "notes_repo: %s\n", emptyIfUnset(cfg.NotesRepo))
-	fmt.Fprintf(stdout, "active dir: %s\n", emptyIfUnset(root))
-	fmt.Fprintf(stdout, "active source: %s\n", source)
-	fmt.Fprintf(stdout, "theme: %s\n", emptyIfUnset(cfg.Theme))
-	fmt.Fprintf(stdout, "active theme: %s\n", themeName)
-	fmt.Fprintf(stdout, "theme source: %s\n", themeSource)
-	fmt.Fprintf(stdout, "layout: %s\n", cfg.Layout)
-	fmt.Fprintf(stdout, "full_screen: %t\n", cfg.FullScreen)
-	fmt.Fprintf(stdout, "picker_height: %d\n", cfg.PickerHeight)
-	fmt.Fprintf(stdout, "focus_mode: %t\n", cfg.FocusMode)
-	fmt.Fprintf(stdout, "show_match_context: %t\n", cfg.ShowMatchContext)
-	fmt.Fprintf(stdout, "show_list_on_start: %t\n", cfg.ShowListOnStart)
-	fmt.Fprintf(stdout, "two_line_results: %t\n", cfg.TwoLineResults)
+	path, _ := hosts.Path()
+	fmt.Fprintf(stdout, "saved: %s -> %s\nfile: %s\n", saved.Name, saved.Command(), path)
 	return nil
+}
+
+func promptAndSaveHost(initialName string, stdout, stderr io.Writer) (hosts.Host, error) {
+	h, err := promptHost(os.Stdin, stdout, hosts.Host{Name: strings.TrimSpace(initialName)})
+	if err != nil {
+		return hosts.Host{}, err
+	}
+	saved, err := hosts.Add(h)
+	if err != nil {
+		return hosts.Host{}, err
+	}
+	path, _ := hosts.Path()
+	fmt.Fprintf(stdout, "saved: %s -> %s\nfile: %s\n", saved.Name, saved.Command(), path)
+	return saved, nil
+}
+
+func promptHost(stdin io.Reader, stdout io.Writer, h hosts.Host) (hosts.Host, error) {
+	r := bufio.NewReader(stdin)
+	ask := func(label, current string) (string, error) {
+		if current != "" {
+			fmt.Fprintf(stdout, "%s [%s]: ", label, current)
+		} else {
+			fmt.Fprintf(stdout, "%s: ", label)
+		}
+		value, err := r.ReadString('\n')
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return current, nil
+		}
+		return value, nil
+	}
+	var err error
+	if h.Name, err = ask("name/alias", h.Name); err != nil {
+		return h, err
+	}
+	if h.Host, err = ask("host ([user@]ip-or-domain)", h.Host); err != nil {
+		return h, err
+	}
+	if h.User, err = ask("user", h.User); err != nil {
+		return h, err
+	}
+	currentPort := ""
+	if h.Port > 0 {
+		currentPort = strconv.Itoa(h.Port)
+	}
+	port, err := ask("port", currentPort)
+	if err != nil {
+		return h, err
+	}
+	if port == "0" || port == "" {
+		h.Port = 0
+	} else if n, err := strconv.Atoi(port); err == nil {
+		h.Port = n
+	}
+	if tagLine, err := ask("tags (space separated)", strings.Join(h.Tags, " ")); err == nil {
+		h.Tags = strings.Fields(tagLine)
+	} else {
+		return h, err
+	}
+	h.Desc, err = ask("description", h.Desc)
+	return h, err
+}
+
+type multiFlag []string
+
+func (m *multiFlag) String() string { return strings.Join(*m, ",") }
+func (m *multiFlag) Set(v string) error {
+	*m = append(*m, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
+	return nil
+}
+
+func runConfig(args []string, stdout, stderr io.Writer) error {
+	if len(args) > 0 && args[0] == "show" {
+		cfgPath, _ := config.ConfigPath()
+		hostsPath, _ := hosts.Path()
+		fmt.Fprintf(stdout, "config file: %s\nhosts file: %s\n", cfgPath, hostsPath)
+		return nil
+	}
+	return errors.New("usage: f config show")
 }
 
 func runSetTheme(args []string, stdout, stderr io.Writer) error {
@@ -389,139 +278,52 @@ func runSetTheme(args []string, stdout, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-
 	if fs.NArg() != 1 {
-		return errors.New("usage: aoo set-theme THEME")
+		return errors.New("usage: f set-theme THEME")
 	}
-
-	themeName := fs.Arg(0)
-	if _, err := ui.ResolveTheme(themeName); err != nil {
+	if _, err := ui.ResolveTheme(fs.Arg(0)); err != nil {
 		return err
 	}
-
-	saved, err := config.SetTheme(themeName)
+	saved, err := config.SetTheme(fs.Arg(0))
 	if err != nil {
 		return err
 	}
-
-	_, err = fmt.Fprintf(stdout, "configured theme: %s\n", saved)
-	return err
+	fmt.Fprintf(stdout, "configured theme: %s\n", saved)
+	return nil
 }
 
 func runThemes(stdout io.Writer) error {
-	fmt.Fprintln(stdout, "Themes:")
 	for _, name := range ui.ThemeNames() {
-		fmt.Fprintf(stdout, "  %s\n", name)
+		fmt.Fprintln(stdout, name)
 	}
 	return nil
 }
 
-func runAdd(args []string, stdout, stderr io.Writer) error {
-	root, _, err := config.ResolveNotesDir("")
-	if err != nil {
-		return err
-	}
+func printUsage(w io.Writer) {
+	name := cliName()
+	fmt.Fprintf(w, `%s — quick SSH host picker
 
-	kind := notecreate.KindNote
-	start := 0
-	if len(args) > 0 {
-		switch notecreate.Kind(args[0]) {
-		case notecreate.KindNote, notecreate.KindCommand:
-			kind = notecreate.Kind(args[0])
-			start = 1
-		}
-	}
-	title := strings.TrimSpace(strings.Join(args[start:], " "))
-	return createAndEditDraft(root, kind, title, stdout, stderr)
+Usage:
+  %s                    fuzzy-pick host and ssh into it
+  %s prod               start with a query
+  Ctrl+N in picker      add a new login variant interactively
+  %s add NAME HOST      also works for scripted adding
+  %s list               print saved/imported hosts
+  %s config show        show config/hosts paths
+
+Add options:
+  -user USER  -p PORT  --tag TAG  --desc TEXT  --args "-A -J jump"
+
+Hosts are kept in one file: ~/.config/aoo/hosts.yaml
+Aliases from ~/.ssh/config are also shown automatically.
+`, name, name, name, name, name, name)
 }
 
-func openEntryInEditor(entry notes.Entry, line int, stdout, stderr io.Writer) error {
-	if strings.TrimSpace(entry.SourcePath) == "" {
-		return errors.New("selected note has no source file")
+func cliName() string {
+	if name := strings.TrimSpace(filepath.Base(os.Args[0])); name != "" {
+		return name
 	}
-	if !filepath.IsAbs(entry.SourcePath) {
-		notesDir, _, err := config.ResolveNotesDir("")
-		if err != nil {
-			return err
-		}
-		path, err := bundled.Materialize(entry.SourcePath, notesDir)
-		if err != nil {
-			return err
-		}
-		targetLine := line
-		if targetLine <= 0 {
-			targetLine = entry.SourceLine
-		}
-		return openPathInEditor(path, targetLine, fmt.Sprintf("aoo: update %s", filepath.Base(path)), stdout, stderr)
-	}
-	targetLine := line
-	if targetLine <= 0 {
-		targetLine = entry.SourceLine
-	}
-	return openPathInEditor(entry.SourcePath, targetLine, fmt.Sprintf("aoo: update %s", filepath.Base(entry.SourcePath)), stdout, stderr)
-}
-
-func openConfigInEditor(stdout, stderr io.Writer) error {
-	configPath, err := config.ConfigPath()
-	if err != nil {
-		return err
-	}
-	return openPathInEditor(configPath, 0, "", stdout, stderr)
-}
-
-func openPathInEditor(path string, line int, commitMessage string, stdout, stderr io.Writer) error {
-	editor := strings.TrimSpace(os.Getenv("VISUAL"))
-	if editor == "" {
-		editor = strings.TrimSpace(os.Getenv("EDITOR"))
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		return errors.New("editor command is empty")
-	}
-
-	args := []string{}
-	if line > 0 {
-		args = append(args, "+"+strconv.Itoa(line))
-	}
-	args = append(args, path)
-	args = append(parts[1:], args...)
-
-	fmt.Fprintf(stdout, "[edit] %s\n", path)
-	cmd := exec.Command(parts[0], args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	if err := notesrepo.AutoCommitPushPath(path, commitMessage, stdout, stderr); err != nil {
-		return err
-	}
-	return nil
-}
-
-func printActionText(entry notes.Entry, action *notes.Action, stdout io.Writer) {
-	if action == nil {
-		return
-	}
-	fmt.Fprintln(stdout, entry.DisplayName())
-	fmt.Fprintln(stdout, strings.TrimRight(action.Text, "\n"))
-}
-
-func printActionCommand(entry notes.Entry, action *notes.Action, stdout io.Writer) error {
-	if action == nil {
-		return errors.New("selected action is empty")
-	}
-	if !action.IsCmd() {
-		printActionText(entry, action, stdout)
-		return nil
-	}
-	fmt.Fprintln(stdout, strings.TrimSpace(action.Cmd))
-	return nil
+	return "f"
 }
 
 func runUpgrade(args []string, stdout, stderr io.Writer) error {
@@ -533,7 +335,6 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-
 	target := strings.TrimSpace(*binPath)
 	if target == "" {
 		exe, err := os.Executable()
@@ -545,10 +346,6 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 			target = exe
 		}
 	}
-	if strings.TrimSpace(target) == "" {
-		return errors.New("cannot detect target binary path")
-	}
-
 	dir := strings.TrimSpace(*workDir)
 	if dir == "" {
 		cacheDir, err := os.UserCacheDir()
@@ -557,15 +354,10 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 		}
 		dir = filepath.Join(cacheDir, "aoo", "source")
 	}
-
-	fmt.Fprintf(stdout, "[upgrade] repo: %s\n", safeRepoURL(*repoURL))
-	fmt.Fprintf(stdout, "[upgrade] source: %s\n", dir)
-	fmt.Fprintf(stdout, "[upgrade] target: %s\n", target)
-
+	fmt.Fprintf(stdout, "[upgrade] repo: %s\n[upgrade] source: %s\n[upgrade] target: %s\n", safeRepoURL(*repoURL), dir, target)
 	if err := ensureUpgradeCheckout(dir, *repoURL, stdout, stderr); err != nil {
 		return err
 	}
-
 	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", target, "./cmd/f")
 	cmd.Dir = dir
 	cmd.Stdout = stdout
@@ -573,7 +365,6 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("go build upgrade: %w", err)
 	}
-
 	fmt.Fprintf(stdout, "[upgrade] done: %s\n", target)
 	return nil
 }
@@ -600,7 +391,7 @@ func ensureUpgradeCheckout(dir, repoURL string, stdout, stderr io.Writer) error 
 	if strings.TrimSpace(repoURL) == "" {
 		return errors.New("upgrade repo URL is required")
 	}
-	if fileExists(filepath.Join(dir, ".git")) {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 		if err := runUpgradeGit(dir, stdout, stderr, "remote", "set-url", "origin", repoURL); err != nil {
 			return err
 		}
@@ -611,12 +402,8 @@ func ensureUpgradeCheckout(dir, repoURL string, stdout, stderr io.Writer) error 
 		if branch == "" {
 			branch = "main"
 		}
-		if err := runUpgradeGit(dir, stdout, stderr, "pull", "--ff-only", "origin", branch); err != nil {
-			return err
-		}
-		return nil
+		return runUpgradeGit(dir, stdout, stderr, "pull", "--ff-only", "origin", branch)
 	}
-
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return err
 	}
@@ -646,203 +433,4 @@ func upgradeGitOutput(dir string, args ...string) string {
 		return ""
 	}
 	return out.String()
-}
-
-func cliName() string {
-	name := strings.TrimSpace(filepath.Base(os.Args[0]))
-	if name == "" {
-		return "f"
-	}
-	return name
-}
-
-func renderBanner(title, message string) string {
-	lines := strings.Split(strings.TrimSpace(message), "\n")
-	width := len(title)
-	for _, line := range lines {
-		if len(line) > width {
-			width = len(line)
-		}
-	}
-	width += 4
-
-	var b strings.Builder
-	border := "+" + strings.Repeat("-", width+2) + "+"
-	b.WriteString(border + "\n")
-	b.WriteString(fmt.Sprintf("| %-*s |\n", width, title))
-	b.WriteString("|" + strings.Repeat("-", width+2) + "|\n")
-	for _, line := range lines {
-		b.WriteString(fmt.Sprintf("| %-*s |\n", width, line))
-	}
-	b.WriteString(border + "\n")
-	return b.String()
-}
-
-func printUsage(w io.Writer) {
-	name := cliName()
-	fmt.Fprintln(w, name)
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Terminal notes and command launcher.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintf(w, "Run `%s` and search for `aoo-help`.\n", name)
-	fmt.Fprintln(w, "Built-in setup/help notes are available on a clean host.")
-	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Extra commands:")
-	fmt.Fprintf(w, "  %s version\n", name)
-	fmt.Fprintf(w, "  %s validate --dir PATH\n", name)
-	fmt.Fprintf(w, "  %s add [title]\n", name)
-	fmt.Fprintf(w, "  %s add cmd [title]\n", name)
-	fmt.Fprintf(w, "  %s set-source\n", name)
-	fmt.Fprintf(w, "  %s upgrade\n", name)
-}
-
-func printConfigUsage(w io.Writer) {
-	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  aoo config")
-	fmt.Fprintln(w, "  aoo config show")
-	fmt.Fprintln(w, "  aoo config set-folder PATH")
-	fmt.Fprintln(w, "  aoo config set-theme THEME")
-}
-
-func emptyIfUnset(value string) string {
-	if strings.TrimSpace(value) == "" {
-		return "(not set)"
-	}
-	return value
-}
-
-func mergeEntries(primary, secondary []notes.Entry) []notes.Entry {
-	merged := make([]notes.Entry, 0, len(primary)+len(secondary))
-	seen := map[string]struct{}{}
-
-	appendEntry := func(entry notes.Entry) {
-		key := entry.DisplayName() + "|" + entry.Action() + "|" + entry.DisplayValue()
-		if _, exists := seen[key]; exists {
-			return
-		}
-		seen[key] = struct{}{}
-		merged = append(merged, entry)
-	}
-
-	for _, entry := range primary {
-		appendEntry(entry)
-	}
-	for _, entry := range secondary {
-		appendEntry(entry)
-	}
-
-	return merged
-}
-
-func loadInteractiveEntries(root string, strict bool, stderr io.Writer) (notes.LoadResult, error) {
-	result := notes.LoadResult{}
-	if strings.TrimSpace(root) != "" {
-		result = notes.LoadDir(root)
-	}
-
-	if bundledResult := loadBundledNotes(); len(bundledResult.Entries) > 0 || len(bundledResult.Errors) > 0 {
-		for _, loadErr := range bundledResult.Errors {
-			fmt.Fprintf(stderr, "warn: %v\n", loadErr)
-		}
-		result.Entries = mergeEntries(result.Entries, bundledResult.Entries)
-	}
-
-	if len(result.Errors) > 0 {
-		for _, loadErr := range result.Errors {
-			fmt.Fprintf(stderr, "warn: %v\n", loadErr)
-		}
-		if strict {
-			return notes.LoadResult{}, errors.New("validation errors found")
-		}
-	}
-	if len(result.Entries) == 0 {
-		return notes.LoadResult{}, errors.New("no notes found")
-	}
-	return result, nil
-}
-
-func createAndEditDraft(root string, kind notecreate.Kind, title string, stdout, stderr io.Writer) error {
-	draft, err := notecreate.Create(root, kind, title)
-	if err != nil {
-		return err
-	}
-
-	if err := openPathInEditor(draft.Path, draft.Line, draft.CommitMessage, stdout, stderr); err != nil {
-		return err
-	}
-	return nil
-}
-
-func repoUpdateHint() (string, bool) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", false
-	}
-
-	repoRoot, ok := detectAooRepoRoot(cwd)
-	if !ok {
-		return "", false
-	}
-
-	exePath, err := os.Executable()
-	if err != nil {
-		return "", false
-	}
-	exePath, err = filepath.EvalSymlinks(exePath)
-	if err != nil {
-		return "", false
-	}
-
-	if isWithinDir(exePath, repoRoot) {
-		return "", false
-	}
-
-	exeInfo, err := os.Stat(exePath)
-	if err != nil {
-		return "", false
-	}
-
-	checks := []string{
-		filepath.Join(repoRoot, "go.mod"),
-		filepath.Join(repoRoot, "internal", "bundled", "notes.go"),
-	}
-
-	for _, path := range checks {
-		info, err := os.Stat(path)
-		if err != nil {
-			continue
-		}
-		if info.ModTime().After(exeInfo.ModTime()) {
-			return fmt.Sprintf("repo is newer than installed binary; run `sudo make update` or `./bin/aoo` from %s", repoRoot), true
-		}
-	}
-
-	return "", false
-}
-
-func detectAooRepoRoot(start string) (string, bool) {
-	dir := start
-	for {
-		if fileExists(filepath.Join(dir, "go.mod")) && fileExists(filepath.Join(dir, "internal", "bundled", "notes.go")) {
-			return dir, true
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return "", false
-		}
-		dir = parent
-	}
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
-
-func isWithinDir(path, dir string) bool {
-	rel, err := filepath.Rel(dir, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (!strings.HasPrefix(rel, ".."+string(filepath.Separator)) && rel != "..")
 }

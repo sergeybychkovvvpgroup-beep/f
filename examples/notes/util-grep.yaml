@@ -1,2 +1,0 @@
-- desc: grep text in files recursively
-  cmd: grep -Rni --color=always 'ERROR|CRITICAL' /var/log

@@ -120,7 +120,7 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.edit = true
 			return m, tea.Quit
 		case "ctrl+n", "alt+n":
-			m.createKind = "note"
+			m.createKind = "host"
 			return m, tea.Quit
 		case "up", "ctrl+k":
 			m.moveCursor(-1)
@@ -363,6 +363,13 @@ func maxInt(a, b int) int {
 	return b
 }
 
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
 func (m PickerModel) contentWidth() int {
 	if m.width <= 0 {
 		return 80
@@ -482,8 +489,7 @@ func (m PickerModel) syncStatusColor() string {
 }
 
 func pickerHelpText() string {
-	return string([]rune{0x2191, 0x2193}) + " select  " +
-		string([]rune{0x2190, 0x2192}) + " hit  enter open/run  alt+enter/ctrl+y print cmd  :/> commands  ctrl+n new  ctrl+e edit  esc quit"
+	return string([]rune{0x2191, 0x2193}) + " select  enter ssh  ctrl+n add new login  alt+enter/ctrl+y print  esc quit"
 }
 
 func isPrintOnlyKey(key string) bool {

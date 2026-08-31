@@ -1,6 +1,0 @@
-- desc: example tunnel
-  text: local https access
-  action: ssh -L 8443:10.0.0.10:443 admin@example.local
-  banner: |-
-    Open in browser:
-    https://127.0.0.1:8443

@@ -1,3 +1,0 @@
-- desc: example ssh
-  text: primary ssh access
-  action: ssh admin@example.local

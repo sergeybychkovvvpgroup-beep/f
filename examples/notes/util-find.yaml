@@ -1,2 +1,0 @@
-- desc: find files by name pattern
-  cmd: find /etc -type f -name '*.conf'

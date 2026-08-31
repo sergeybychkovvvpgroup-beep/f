@@ -1,2 +1,0 @@
-- desc: ssh through jump host
-  cmd: ssh -J root@192.168.1.10 admin@10.0.0.10

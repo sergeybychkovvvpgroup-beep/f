@@ -1,2 +1,0 @@
-- desc: dig dns record
-  cmd: dig nas.example.local A +short

@@ -1,87 +1,51 @@
-# f
+# f / aoo
 
-Terminal notes and command launcher. The project was formerly called `aoo`; `aoo` is still installed as a compatibility symlink.
+A tiny SSH login picker. Run `f`, type fuzzy keywords, choose a login variant, press `Enter`, and it opens `ssh`.
+Search is always command/SSH search: `:` and `>` prefixes still work, but are no longer needed.
 
-## Install
-
-```bash
-make build
-sudo make install
-```
-
-## Config
-
-File: `~/.config/aoo/config.yaml`
-
-Minimal example:
-
-```yaml
-notes_dir: ~/.local/share/aoo/notes
-theme: fzf-dark
-layout: bottom
-full_screen: true
-picker_height: 14
-focus_mode: false
-show_match_context: false
-show_list_on_start: true
-two_line_results: true
-```
-
-- `focus_mode` hides the hotkey footer for a cleaner picker
-- `show_match_context` shows the matched line for the selected entry
-- `show_list_on_start` shows notes immediately with an empty query
-- `two_line_results` keeps description and command/text on separate lines
+## Main flow
 
 ```bash
-f config
-f config show
+f             # fuzzy-pick and ssh
+f prod db     # start with query "prod db"
 ```
 
-## Usage
+Add a new login variant from the picker:
+
+```text
+Ctrl+N        # add new login
+```
+
+After `Ctrl+N`, `f` asks for alias, host, user, port, tags, and description.
+
+## Extra commands
 
 ```bash
-f
-f --query ssh
-f validate --dir ~/.local/share/aoo/notes
-f add "router dhcp"
-f add cmd "restart nginx"
-f upgrade
+f add NAME HOST      # non-interactive/scripted add
+f list               # print hosts/ssh commands
+f config show        # show file paths
 ```
 
-Keys:
+Examples:
 
-- `Enter` open or run
-- `Alt+Enter` or `Ctrl+Y` print the command to the terminal without running it, so it can be copied (`Ctrl+Enter` is also supported when the terminal can distinguish it from plain Enter)
-- `Ctrl+E` edit
-- `Ctrl+N` create a new note from current query
-- `Esc` quit
-
-## Note format
-
-Prefer one note per file, for example `ssh-router.yaml`:
-
-```yaml
-desc: ssh router
-actions:
-  - desc: main access
-    text: ssh command for router
-  - desc: connect
-    cmd: ssh admin@router
+```bash
+f add nas root@192.168.88.10 --tag home --desc "home NAS"
+f add db 10.20.30.40 -user admin -p 2222 --tag prod --args "-A -J jump"
 ```
 
-Simple command-only files are also valid:
+Hosts are stored in one file:
 
-```yaml
-desc: nginx logs
-cmd: journalctl -u nginx -n 100
+```text
+~/.config/aoo/hosts.yaml
 ```
 
-If a note has `cmd`, `Enter` runs it. If it has only `text`, `Enter` prints the note.
+Aliases from `~/.ssh/config` are imported automatically.
 
-Plain query searches notes and files. `:query` or `>query` searches only commands.
+## Keys
 
-## Raw files
-
-You can store snippets as plain files: `netplan.yaml`, `bgp.conf`, `notes.md`.
-
-`aoo` shows them in search and opens the content as a note.
+- type to filter
+- `↑/↓` or `ctrl+k/ctrl+j` to move
+- `Enter` to ssh
+- `Ctrl+N` to add a new login variant
+- `Alt+Enter` / `Ctrl+Y` to print the command only
+- `Esc` / `Ctrl+C` to quit
