@@ -962,7 +962,10 @@ func (m *PickerModel) moveCursor(delta int) {
 		return
 	}
 	target := m.cursor + delta
-	if m.isBottomLayout() {
+	// Bottom layout renders results bottom-up, so keys are inverted there.
+	// Wide sshelf/split-pane mode always renders top-down, even if the legacy
+	// config still says layout: bottom.
+	if m.isBottomLayout() && !m.useRightPreview(m.contentWidth()) {
 		target = m.cursor - delta
 	}
 	if target < 0 || target >= len(m.matches) {
