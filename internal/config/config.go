@@ -82,7 +82,7 @@ func ConfigPath() (string, error) {
 
 func DefaultFile() File {
 	return File{
-		Theme:            "fzf-dark",
+		Theme:            "sshelf",
 		Layout:           "bottom",
 		FullScreen:       true,
 		PickerHeight:     14,
@@ -314,7 +314,7 @@ func renderConfig(cfg File) string {
 	lines := []string{
 		"# f / aoo — SSH host picker",
 		"# hosts are stored in ~/.config/aoo/config.d/*.yaml",
-		"# themes: auto, fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
+		"# themes: auto, sshelf, fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
 		"# show_list_on_start: render results when query is empty",

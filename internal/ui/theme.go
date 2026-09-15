@@ -42,6 +42,7 @@ func ResolveTheme(name string) (Theme, error) {
 
 func ThemeNames() []string {
 	return []string{
+		"sshelf",
 		"fzf-dark",
 		"catppuccin-mocha",
 		"catppuccin-latte",
@@ -53,6 +54,26 @@ func ThemeNames() []string {
 }
 
 var themes = map[string]Theme{
+	"sshelf": {
+		Name:         "sshelf",
+		TitleFG:      "#cdd6f4",
+		TitleDimFG:   "#6c7086",
+		SelectedFG:   "#1e1e2e",
+		SelectedBG:   "#cdd6f4",
+		DetailFG:     "#a6adc8",
+		HelpFG:       "#6c7086",
+		InputFG:      "#cdd6f4",
+		InputBG:      "#1e1e2e",
+		InputBorder:  "#a6adc8",
+		InputPrompt:  "#94e2d5",
+		RowFG:        "#cdd6f4",
+		DividerFG:    "#45475a",
+		SelectedMark: "▸",
+		StatusOKFG:   "#a6e3a1",
+		StatusWarnFG: "#f9e2af",
+		StatusErrFG:  "#f38ba8",
+		StatusRunFG:  "#89b4fa",
+	},
 	"fzf-dark": {
 		Name:         "fzf-dark",
 		TitleFG:      "#cfd5d9",
