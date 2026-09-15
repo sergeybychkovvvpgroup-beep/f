@@ -148,7 +148,7 @@ func runList(stdout io.Writer) error {
 		return err
 	}
 	for _, h := range list {
-		fmt.Fprintf(stdout, "%-24s %s\n", h.Name, h.Command())
+		fmt.Fprintf(stdout, "%-24s %s\n", hosts.DisplayName(h), h.Command())
 	}
 	return nil
 }

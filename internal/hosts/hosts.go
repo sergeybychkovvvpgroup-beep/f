@@ -193,10 +193,7 @@ func ToEntries(list []Host) []notes.Entry {
 	entries := make([]notes.Entry, 0, len(list))
 	for _, h := range list {
 		cmd := h.Command()
-		label := h.Name
-		if label == "" {
-			label = h.Host
-		}
+		label := DisplayName(h)
 		detail := hostDetail(h)
 		mode := h.Mode
 		if mode == "" {
@@ -215,6 +212,20 @@ func ToEntries(list []Host) []notes.Entry {
 		})
 	}
 	return entries
+}
+
+func DisplayName(h Host) string {
+	name := strings.TrimSpace(h.Name)
+	if name == "" {
+		name = strings.TrimSpace(h.Host)
+	}
+	// A lot of imported runbook aliases were named ssh-<host>. In a SSH
+	// picker that prefix is redundant noise; keep the real alias in Cmd so
+	// execution still uses the exact OpenSSH config entry.
+	if strings.HasPrefix(name, "ssh-") {
+		name = strings.TrimPrefix(name, "ssh-")
+	}
+	return name
 }
 
 func hostDetail(h Host) string {
