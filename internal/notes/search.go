@@ -132,14 +132,9 @@ func commandOnlyPresentation(entry Entry) (string, string) {
 		return entry.DisplayName(), formatDetail(entry)
 	}
 
-	detail := strings.TrimSpace(action.Desc)
-	if detail == "" {
-		detail = entry.DisplayName()
-	}
-
 	switch {
 	case action.IsCmd():
-		return entry.DisplayName(), detail
+		return entry.DisplayName(), ""
 	default:
 		return entry.DisplayName(), action.DisplayValue()
 	}

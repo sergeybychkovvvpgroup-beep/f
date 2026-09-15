@@ -198,7 +198,6 @@ func ToEntries(list []Host) []notes.Entry {
 		}
 		detail := hostDetail(h)
 		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd}
-		searchParts = append(searchParts, h.Tags...)
 		entries = append(entries, notes.Entry{
 			Desc: label,
 			Note: strings.Join(searchParts, " "),
@@ -223,9 +222,6 @@ func hostDetail(h Host) string {
 			target += ":" + strconv.Itoa(h.Port)
 		}
 		parts = append(parts, target)
-	}
-	if len(h.Tags) > 0 {
-		parts = append(parts, "#"+strings.Join(h.Tags, " #"))
 	}
 	if h.Desc != "" && h.Desc != "~/.ssh/config" {
 		parts = append(parts, h.Desc)
@@ -430,10 +426,39 @@ func expandedSSHCommand(alias string, attrs map[string]string) string {
 	if remote := strings.TrimSpace(attrs["remotecommand"]); remote != "" && strings.ToLower(remote) != "none" {
 		parts = append(parts, remote)
 	}
-	for i := range parts {
-		parts[i] = shellQuote(parts[i])
+	return multilineShellCommand(parts)
+}
+
+func multilineShellCommand(parts []string) string {
+	if len(parts) == 0 {
+		return ""
 	}
-	return strings.Join(parts, " ")
+	if len(parts) <= 3 {
+		quoted := make([]string, len(parts))
+		for i, part := range parts {
+			quoted[i] = shellQuote(part)
+		}
+		return strings.Join(quoted, " ")
+	}
+	groups := []string{shellQuote(parts[0])}
+	for i := 1; i < len(parts); i++ {
+		part := parts[i]
+		if (part == "-o" || part == "-J" || part == "-p" || part == "-i") && i+1 < len(parts) {
+			groups = append(groups, shellQuote(part)+" "+shellQuote(parts[i+1]))
+			i++
+			continue
+		}
+		groups = append(groups, shellQuote(part))
+	}
+	lines := []string{groups[0] + " \\"}
+	for i := 1; i < len(groups); i++ {
+		line := "  " + groups[i]
+		if i < len(groups)-1 {
+			line += " \\"
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func canonicalSSHOption(key string) string {

@@ -714,34 +714,65 @@ func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipg
 	}
 	entry := m.matches[m.cursor].Entry
 	action := entry.QuickAction()
-	lines := []string{hintStyle.Render(truncateRunes(entry.DisplayName(), width))}
+	lines := []string{hintStyle.Render("name")}
+	lines = append(lines, detailStyle.Render(truncateRunes(entry.DisplayName(), width)))
 	if action != nil {
-		if strings.TrimSpace(action.Desc) != "" && strings.TrimSpace(action.Desc) != "ssh" {
-			lines = append(lines, detailStyle.Render(truncateRunes(action.Desc, width)))
-		}
-		if strings.TrimSpace(action.Cmd) != "" {
+		if desc := strings.TrimSpace(action.Desc); desc != "" && desc != "ssh" {
 			lines = append(lines, "")
-			lines = append(lines, hintStyle.Render("command"))
-			for _, line := range wrapText(action.Cmd, width) {
+			lines = append(lines, hintStyle.Render("description"))
+			for _, line := range wrapText(desc, width) {
 				lines = append(lines, detailStyle.Render(line))
 			}
 		}
-		if strings.TrimSpace(action.Banner) != "" {
+		if cmd := strings.TrimSpace(action.Cmd); cmd != "" {
+			lines = append(lines, "")
+			lines = append(lines, hintStyle.Render("short command"))
+			for _, line := range commandPreviewLines(cmd, width) {
+				lines = append(lines, detailStyle.Render(line))
+			}
+		}
+		if full := strings.TrimSpace(action.Banner); full != "" {
 			lines = append(lines, "")
 			lines = append(lines, hintStyle.Render("full command"))
-			for _, line := range wrapText(action.Banner, width) {
+			for _, line := range commandPreviewLines(full, width) {
 				lines = append(lines, detailStyle.Render(line))
 			}
-		}
-	}
-	if strings.TrimSpace(entry.Note) != "" {
-		lines = append(lines, "")
-		lines = append(lines, hintStyle.Render("search"))
-		for _, line := range wrapText(entry.Note, width) {
-			lines = append(lines, detailStyle.Render(line))
 		}
 	}
 	return clipLines(lines, height)
+}
+
+func commandPreviewLines(value string, width int) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return []string{""}
+	}
+	if strings.Contains(value, "\n") {
+		return wrapText(value, width)
+	}
+	fields := strings.Fields(value)
+	if len(fields) <= 3 || utf8.RuneCountInString(value) <= width {
+		return wrapText(value, width)
+	}
+	groups := []string{fields[0]}
+	for i := 1; i < len(fields); i++ {
+		field := fields[i]
+		if (field == "-o" || field == "-J" || field == "-p" || field == "-i") && i+1 < len(fields) {
+			groups = append(groups, field+" "+fields[i+1])
+			i++
+			continue
+		}
+		groups = append(groups, field)
+	}
+	lines := []string{groups[0] + " \\"}
+	for i := 1; i < len(groups); i++ {
+		line := "  " + groups[i]
+		if i < len(groups)-1 {
+			line += " \\"
+		}
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func fillLines(lines []string, height, width int, style lipgloss.Style) []string {
