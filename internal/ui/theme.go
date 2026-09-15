@@ -63,7 +63,7 @@ var themes = map[string]Theme{
 		DetailFG:     "#a6adc8",
 		HelpFG:       "#6c7086",
 		InputFG:      "#cdd6f4",
-		InputBG:      "#1e1e2e",
+		InputBG:      "",
 		InputBorder:  "#a6adc8",
 		InputPrompt:  "#94e2d5",
 		RowFG:        "#cdd6f4",
