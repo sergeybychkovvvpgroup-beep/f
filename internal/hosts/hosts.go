@@ -17,14 +17,15 @@ import (
 const envHostsFile = "AOO_HOSTS_FILE"
 
 type Host struct {
-	Name string   `yaml:"name"`
-	Host string   `yaml:"host"`
-	User string   `yaml:"user,omitempty"`
-	Port int      `yaml:"port,omitempty"`
-	Tags []string `yaml:"tags,omitempty"`
-	Args string   `yaml:"args,omitempty"`
-	Cmd  string   `yaml:"cmd,omitempty"`
-	Desc string   `yaml:"desc,omitempty"`
+	Name    string   `yaml:"name"`
+	Host    string   `yaml:"host"`
+	User    string   `yaml:"user,omitempty"`
+	Port    int      `yaml:"port,omitempty"`
+	Tags    []string `yaml:"tags,omitempty"`
+	Args    string   `yaml:"args,omitempty"`
+	Cmd     string   `yaml:"cmd,omitempty"`
+	Desc    string   `yaml:"desc,omitempty"`
+	Preview string   `yaml:"preview,omitempty"`
 }
 
 type File struct {
@@ -199,9 +200,13 @@ func ToEntries(list []Host) []notes.Entry {
 		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd}
 		searchParts = append(searchParts, h.Tags...)
 		entries = append(entries, notes.Entry{
-			Desc:    label,
-			Note:    strings.Join(searchParts, " "),
-			Actions: []notes.Action{{Desc: detail, Cmd: cmd}},
+			Desc: label,
+			Note: strings.Join(searchParts, " "),
+			Actions: []notes.Action{{
+				Desc:   detail,
+				Cmd:    cmd,
+				Banner: h.Preview,
+			}},
 		})
 	}
 	return entries
@@ -341,10 +346,11 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 			if p, _ := strconv.Atoi(attrs["port"]); p > 0 {
 				h.Port = p
 			}
-			// Preserve the exact OpenSSH config semantics, including ProxyJump,
-			// LocalForward, RemoteCommand and options unknown to aoo. Keep the
-			// visible row compact; source file paths are noise in the picker.
+			// Preserve the exact OpenSSH config semantics for execution by running
+			// the alias. Also keep a best-effort expanded command for preview, so
+			// RemoteCommand-based entries show the useful command on the right.
 			h.Cmd = "ssh " + shellQuote(alias)
+			h.Preview = expandedSSHCommand(alias, attrs)
 			out = append(out, normalize(h))
 		}
 	}
@@ -378,12 +384,75 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 			flush()
 			current = fields[1:]
 			attrs = map[string]string{}
-		case "hostname", "user", "port":
+		default:
 			attrs[key] = value
 		}
 	}
 	flush()
 	return out
+}
+
+func expandedSSHCommand(alias string, attrs map[string]string) string {
+	if len(attrs) == 0 {
+		return ""
+	}
+	parts := []string{"ssh"}
+	if value := strings.TrimSpace(attrs["port"]); value != "" && value != "22" {
+		parts = append(parts, "-p", value)
+	}
+	if value := strings.TrimSpace(attrs["proxyjump"]); value != "" {
+		parts = append(parts, "-J", value)
+	}
+	if value := strings.TrimSpace(attrs["identityfile"]); value != "" {
+		parts = append(parts, "-i", value)
+	}
+	for _, opt := range []string{
+		"hostkeyalgorithms",
+		"pubkeyacceptedalgorithms",
+		"stricthostkeychecking",
+		"userknownhostsfile",
+		"requesttty",
+		"forwardagent",
+	} {
+		if value := strings.TrimSpace(attrs[opt]); value != "" {
+			parts = append(parts, "-o", canonicalSSHOption(opt)+"="+value)
+		}
+	}
+
+	target := strings.TrimSpace(attrs["hostname"])
+	if target == "" {
+		target = alias
+	}
+	if user := strings.TrimSpace(attrs["user"]); user != "" {
+		target = user + "@" + target
+	}
+	parts = append(parts, target)
+	if remote := strings.TrimSpace(attrs["remotecommand"]); remote != "" && strings.ToLower(remote) != "none" {
+		parts = append(parts, remote)
+	}
+	for i := range parts {
+		parts[i] = shellQuote(parts[i])
+	}
+	return strings.Join(parts, " ")
+}
+
+func canonicalSSHOption(key string) string {
+	switch strings.ToLower(key) {
+	case "hostkeyalgorithms":
+		return "HostKeyAlgorithms"
+	case "pubkeyacceptedalgorithms":
+		return "PubkeyAcceptedAlgorithms"
+	case "stricthostkeychecking":
+		return "StrictHostKeyChecking"
+	case "userknownhostsfile":
+		return "UserKnownHostsFile"
+	case "requesttty":
+		return "RequestTTY"
+	case "forwardagent":
+		return "ForwardAgent"
+	default:
+		return key
+	}
 }
 
 func parseSSHTags(line string) []string {

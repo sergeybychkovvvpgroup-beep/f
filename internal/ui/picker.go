@@ -728,7 +728,7 @@ func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipg
 		}
 		if strings.TrimSpace(action.Banner) != "" {
 			lines = append(lines, "")
-			lines = append(lines, hintStyle.Render("banner"))
+			lines = append(lines, hintStyle.Render("full command"))
 			for _, line := range wrapText(action.Banner, width) {
 				lines = append(lines, detailStyle.Render(line))
 			}
