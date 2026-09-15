@@ -26,6 +26,7 @@ type Host struct {
 	Cmd     string   `yaml:"cmd,omitempty"`
 	Desc    string   `yaml:"desc,omitempty"`
 	Preview string   `yaml:"preview,omitempty"`
+	Mode    string   `yaml:"-"`
 }
 
 type File struct {
@@ -197,9 +198,14 @@ func ToEntries(list []Host) []notes.Entry {
 			label = h.Host
 		}
 		detail := hostDetail(h)
+		mode := h.Mode
+		if mode == "" {
+			mode = classifyHostSyntax(h)
+		}
 		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd}
 		entries = append(entries, notes.Entry{
 			Desc: label,
+			Mode: mode,
 			Note: strings.Join(searchParts, " "),
 			Actions: []notes.Action{{
 				Desc:   detail,
@@ -346,6 +352,7 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 			// the alias. Also keep a best-effort expanded command for preview, so
 			// RemoteCommand-based entries show the useful command on the right.
 			h.Cmd = "ssh " + shellQuote(alias)
+			h.Mode = classifySSHEntry(attrs)
 			h.Preview = expandedSSHCommand(alias, attrs)
 			out = append(out, normalize(h))
 		}
@@ -386,6 +393,50 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 	}
 	flush()
 	return out
+}
+
+func classifyHostSyntax(h Host) string {
+	text := " " + strings.ToLower(strings.TrimSpace(h.Args+" "+h.Cmd)) + " "
+	if strings.Contains(text, " -l ") || strings.Contains(text, " -r ") || strings.Contains(text, " -d ") || strings.Contains(text, " localforward ") || strings.Contains(text, " remoteforward ") || strings.Contains(text, " dynamicforward ") {
+		return "forwards"
+	}
+	if strings.TrimSpace(h.Cmd) != "" && !looksLikePlainSSH(h.Cmd) {
+		return "commands"
+	}
+	if strings.Contains(text, " -j ") || strings.Contains(text, " proxyjump ") || strings.Contains(text, " proxycommand ") {
+		return "jumps"
+	}
+	return "general"
+}
+
+func looksLikePlainSSH(cmd string) bool {
+	fields := strings.Fields(strings.TrimSpace(cmd))
+	return len(fields) == 2 && fields[0] == "ssh"
+}
+
+func classifySSHEntry(attrs map[string]string) string {
+	if hasAnySSHAttr(attrs, "localforward", "remoteforward", "dynamicforward") {
+		return "forwards"
+	}
+	if hasAnySSHAttr(attrs, "remotecommand") {
+		if hasAnySSHAttr(attrs, "proxyjump", "proxycommand") {
+			return "commands jumps"
+		}
+		return "commands"
+	}
+	if hasAnySSHAttr(attrs, "proxyjump", "proxycommand") {
+		return "jumps"
+	}
+	return "general"
+}
+
+func hasAnySSHAttr(attrs map[string]string, keys ...string) bool {
+	for _, key := range keys {
+		if strings.TrimSpace(attrs[key]) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func expandedSSHCommand(alias string, attrs map[string]string) string {
