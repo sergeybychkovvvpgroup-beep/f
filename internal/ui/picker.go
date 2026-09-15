@@ -164,6 +164,9 @@ func (m PickerModel) View() string {
 	input := m.input
 	input.Width = m.inputWidth()
 	inputLine := truncateRunes(input.View(), contentWidth)
+	if m.useRightPreview(contentWidth) {
+		return m.shelfView(contentWidth, effectiveHeight, inputLine, rowStyle, selectedStyle, detailStyle, helpStyle, titleStyle)
+	}
 	lines := make([]string, 0, maxInt(6, effectiveHeight))
 
 	if m.isBottomLayout() {
@@ -642,6 +645,30 @@ func previewHitCount(preview notes.PreviewMatch) int {
 	return len(preview.Occurrences)
 }
 
+func (m PickerModel) shelfView(width, height int, inputLine string, rowStyle, selectedStyle, detailStyle, helpStyle, titleStyle lipgloss.Style) string {
+	if height < 8 {
+		height = 8
+	}
+	chrome := lipgloss.Color(m.theme.TitleDimFG)
+	queryBox := lipgloss.NewStyle().
+		Width(maxInt(1, width-2)).
+		Height(1).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(chrome).
+		Render(truncateRunes("aoo  "+m.statusLine()+"  "+inputLine, maxInt(1, width-2)))
+
+	bodyHeight := maxInt(4, height-4)
+	compact := m
+	compact.options.SingleLineResults = true
+	compact.options.Layout = "top"
+	body := compact.resultBlock(width, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)
+
+	help := helpStyle.Render(truncateRunes(pickerHelpText(), width))
+	lines := append([]string{queryBox}, body...)
+	lines = append(lines, help)
+	return lipgloss.NewStyle().Width(width).Render(strings.Join(lines, "\n"))
+}
+
 func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, detailStyle, hintStyle lipgloss.Style) []string {
 	if !m.useRightPreview(width) {
 		return m.resultLines(width, rowStyle, selectedStyle, detailStyle, hintStyle)
@@ -662,8 +689,8 @@ func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, det
 
 	left := m.resultLines(listWidth-2, rowStyle, selectedStyle, detailStyle, hintStyle)
 	right := m.previewLines(previewWidth-2, height-2, detailStyle, hintStyle)
-	leftBox := lipgloss.NewStyle().Width(listWidth).Height(height).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.TitleDimFG)).Render(strings.Join(fillLines(left, height-2, listWidth-2), "\n"))
-	rightBox := lipgloss.NewStyle().Width(previewWidth).Height(height).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.TitleDimFG)).Render(strings.Join(fillLines(right, height-2, previewWidth-2), "\n"))
+	leftBox := lipgloss.NewStyle().Width(maxInt(1, listWidth-2)).Height(maxInt(1, height-2)).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.TitleDimFG)).Render(strings.Join(fillLines(left, height-2, listWidth-2), "\n"))
+	rightBox := lipgloss.NewStyle().Width(maxInt(1, previewWidth-2)).Height(maxInt(1, height-2)).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.TitleDimFG)).Render(strings.Join(fillLines(right, height-2, previewWidth-2), "\n"))
 	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, leftBox, strings.Repeat(" ", gap), rightBox), "\n")
 }
 

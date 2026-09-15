@@ -324,7 +324,6 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 		return nil
 	}
 	defer file.Close()
-	home, _ := os.UserHomeDir()
 
 	var out []Host
 	var current []string
@@ -343,9 +342,9 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 				h.Port = p
 			}
 			// Preserve the exact OpenSSH config semantics, including ProxyJump,
-			// LocalForward, RemoteCommand and options unknown to aoo.
+			// LocalForward, RemoteCommand and options unknown to aoo. Keep the
+			// visible row compact; source file paths are noise in the picker.
 			h.Cmd = "ssh " + shellQuote(alias)
-			h.Desc = strings.TrimPrefix(path, home)
 			out = append(out, normalize(h))
 		}
 	}
