@@ -169,7 +169,8 @@ func (m PickerModel) View() string {
 	if m.isBottomLayout() {
 		resultBlock := []string{}
 		if m.shouldRenderResults() {
-			resultBlock = append(resultBlock, m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, helpStyle)...)
+			bodyHeight := maxInt(4, effectiveHeight-4)
+			resultBlock = append(resultBlock, m.resultBlock(contentWidth, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)...)
 			resultBlock = append(resultBlock, "")
 		}
 		lines = append(lines, resultBlock...)
@@ -189,7 +190,8 @@ func (m PickerModel) View() string {
 		lines = append(lines, inputLine)
 		if m.shouldRenderResults() {
 			lines = append(lines, "")
-			lines = append(lines, m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, helpStyle)...)
+			bodyHeight := maxInt(4, effectiveHeight-5)
+			lines = append(lines, m.resultBlock(contentWidth, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)...)
 		}
 		lines = append(lines, "")
 		lines = append(lines, truncateRunes(m.renderStatusBar(titleStyle), contentWidth))
@@ -638,6 +640,79 @@ func previewHitCount(preview notes.PreviewMatch) int {
 		return count
 	}
 	return len(preview.Occurrences)
+}
+
+func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, detailStyle, hintStyle lipgloss.Style) []string {
+	if !m.useRightPreview(width) {
+		return m.resultLines(width, rowStyle, selectedStyle, detailStyle, hintStyle)
+	}
+
+	gap := 1
+	previewWidth := width / 2
+	if previewWidth < 42 {
+		previewWidth = 42
+	}
+	if previewWidth > 84 {
+		previewWidth = 84
+	}
+	listWidth := width - previewWidth - gap
+	if listWidth < 32 {
+		return m.resultLines(width, rowStyle, selectedStyle, detailStyle, hintStyle)
+	}
+
+	left := m.resultLines(listWidth-2, rowStyle, selectedStyle, detailStyle, hintStyle)
+	right := m.previewLines(previewWidth-2, height-2, detailStyle, hintStyle)
+	leftBox := lipgloss.NewStyle().Width(listWidth).Height(height).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.TitleDimFG)).Render(strings.Join(fillLines(left, height-2, listWidth-2), "\n"))
+	rightBox := lipgloss.NewStyle().Width(previewWidth).Height(height).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.TitleDimFG)).Render(strings.Join(fillLines(right, height-2, previewWidth-2), "\n"))
+	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, leftBox, strings.Repeat(" ", gap), rightBox), "\n")
+}
+
+func (m PickerModel) useRightPreview(width int) bool {
+	return width >= 100 && m.shouldRenderResults()
+}
+
+func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipgloss.Style) []string {
+	if len(m.matches) == 0 {
+		return []string{detailStyle.Render("No selection")}
+	}
+	entry := m.matches[m.cursor].Entry
+	action := entry.QuickAction()
+	lines := []string{hintStyle.Render(truncateRunes(entry.DisplayName(), width))}
+	if action != nil {
+		if strings.TrimSpace(action.Desc) != "" && strings.TrimSpace(action.Desc) != "ssh" {
+			lines = append(lines, detailStyle.Render(truncateRunes(action.Desc, width)))
+		}
+		if strings.TrimSpace(action.Cmd) != "" {
+			lines = append(lines, "")
+			lines = append(lines, hintStyle.Render("command"))
+			for _, line := range wrapText(action.Cmd, width) {
+				lines = append(lines, detailStyle.Render(line))
+			}
+		}
+		if strings.TrimSpace(action.Banner) != "" {
+			lines = append(lines, "")
+			lines = append(lines, hintStyle.Render("banner"))
+			for _, line := range wrapText(action.Banner, width) {
+				lines = append(lines, detailStyle.Render(line))
+			}
+		}
+	}
+	if strings.TrimSpace(entry.Note) != "" {
+		lines = append(lines, "")
+		lines = append(lines, hintStyle.Render("search"))
+		for _, line := range wrapText(entry.Note, width) {
+			lines = append(lines, detailStyle.Render(line))
+		}
+	}
+	return clipLines(lines, height)
+}
+
+func fillLines(lines []string, height, width int) []string {
+	out := clipLines(lines, height)
+	for len(out) < height {
+		out = append(out, "")
+	}
+	return out
 }
 
 func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle, hintStyle lipgloss.Style) []string {

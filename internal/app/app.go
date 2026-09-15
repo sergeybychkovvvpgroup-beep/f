@@ -66,6 +66,7 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	syncStatus := syncHostsConfig(stderr)
 	list, err := hosts.Load()
 	if err != nil {
 		return err
@@ -79,6 +80,7 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 		ShowListOnStart:   cfg.ShowListOnStart,
 		SingleLineResults: !cfg.TwoLineResults,
 		Layout:            cfg.Layout,
+		InitialSync:       syncStatus,
 	}
 	if options.FullScreen {
 		options.Height = 0
@@ -185,6 +187,7 @@ func runAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	pushHostsConfig(stderr)
 	path, _ := hosts.Path()
 	fmt.Fprintf(stdout, "saved: %s -> %s\nfile: %s\n", saved.Name, saved.Command(), path)
 	return nil
@@ -199,6 +202,7 @@ func promptAndSaveHost(initialName string, stdout, stderr io.Writer) (hosts.Host
 	if err != nil {
 		return hosts.Host{}, err
 	}
+	pushHostsConfig(stderr)
 	path, _ := hosts.Path()
 	fmt.Fprintf(stdout, "saved: %s -> %s\nfile: %s\n", saved.Name, saved.Command(), path)
 	return saved, nil
@@ -266,10 +270,90 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "show" {
 		cfgPath, _ := config.ConfigPath()
 		hostsPath, _ := hosts.Path()
-		fmt.Fprintf(stdout, "config file: %s\nhosts file: %s\n", cfgPath, hostsPath)
+		hostsDir, _ := hosts.ConfigDir()
+		fmt.Fprintf(stdout, "config file: %s\nhosts dir: %s\ndefault hosts file: %s\n", cfgPath, hostsDir, hostsPath)
 		return nil
 	}
-	return errors.New("usage: f config show")
+	if len(args) > 0 && args[0] == "sync" {
+		status := syncHostsConfig(stderr)
+		if status.Message != "" {
+			fmt.Fprintf(stdout, "%s: %s\n", status.State, status.Message)
+		} else {
+			fmt.Fprintf(stdout, "%s\n", status.State)
+		}
+		return nil
+	}
+	return errors.New("usage: f config show|sync")
+}
+
+func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
+	dir, err := hosts.ConfigDir()
+	if err != nil {
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no config.d"}
+	}
+	root, ok := gitRoot(dir)
+	if !ok {
+		return ui.SyncStatus{State: ui.SyncStateHidden}
+	}
+	if err := runQuietGit(root, "pull", "--rebase", "--autostash"); err != nil {
+		fmt.Fprintf(stderr, "[sync] git pull failed in %s: %v\n", root, err)
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "pull failed"}
+	}
+	return ui.SyncStatus{State: ui.SyncStateOK}
+}
+
+func pushHostsConfig(stderr io.Writer) ui.SyncStatus {
+	dir, err := hosts.ConfigDir()
+	if err != nil {
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no config.d"}
+	}
+	root, ok := gitRoot(dir)
+	if !ok {
+		return ui.SyncStatus{State: ui.SyncStateHidden}
+	}
+	_ = runQuietGit(root, "add", ".")
+	status := strings.TrimSpace(gitOutput(root, "status", "--porcelain"))
+	if status != "" {
+		if err := runQuietGit(root, "commit", "-m", "Update aoo hosts"); err != nil {
+			fmt.Fprintf(stderr, "[sync] git commit failed in %s: %v\n", root, err)
+			return ui.SyncStatus{State: ui.SyncStateWarn, Message: "commit failed"}
+		}
+	}
+	if err := runQuietGit(root, "push"); err != nil {
+		fmt.Fprintf(stderr, "[sync] git push failed in %s: %v\n", root, err)
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "push failed"}
+	}
+	return ui.SyncStatus{State: ui.SyncStateOK}
+}
+
+func gitRoot(dir string) (string, bool) {
+	if _, err := os.Stat(dir); err != nil {
+		return "", false
+	}
+	root := strings.TrimSpace(gitOutput(dir, "rev-parse", "--show-toplevel"))
+	if root == "" {
+		return "", false
+	}
+	return root, true
+}
+
+func runQuietGit(dir string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	return cmd.Run()
+}
+
+func gitOutput(dir string, args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	var out strings.Builder
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return ""
+	}
+	return out.String()
 }
 
 func runSetTheme(args []string, stdout, stderr io.Writer) error {

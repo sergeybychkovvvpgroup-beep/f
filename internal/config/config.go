@@ -313,7 +313,7 @@ func renderConfig(cfg File) string {
 	}
 	lines := []string{
 		"# f / aoo — SSH host picker",
-		"# hosts are stored in ~/.config/aoo/hosts.yaml",
+		"# hosts are stored in ~/.config/aoo/config.d/*.yaml",
 		"# themes: auto, fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",

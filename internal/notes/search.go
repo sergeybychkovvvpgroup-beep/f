@@ -139,7 +139,7 @@ func commandOnlyPresentation(entry Entry) (string, string) {
 
 	switch {
 	case action.IsCmd():
-		return entry.DisplayName(), oneLine(action.Cmd, 120)
+		return entry.DisplayName(), detail
 	default:
 		return entry.DisplayName(), action.DisplayValue()
 	}

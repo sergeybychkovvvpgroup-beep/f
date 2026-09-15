@@ -35,6 +35,73 @@ func Path() (string, error) {
 	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
 		return filepath.Abs(value)
 	}
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "hosts.yaml"), nil
+}
+
+func ConfigDir() (string, error) {
+	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
+		abs, err := filepath.Abs(value)
+		if err != nil {
+			return "", err
+		}
+		return filepath.Dir(abs), nil
+	}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "aoo", "config.d"), nil
+}
+
+func Load() ([]Host, error) {
+	var out []Host
+	for _, path := range hostFiles() {
+		if raw, err := os.ReadFile(path); err == nil {
+			parsed, err := parse(raw)
+			if err != nil {
+				return nil, fmt.Errorf("parse %s: %w", path, err)
+			}
+			out = append(out, parsed...)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+	out = merge(out, loadSSHConfig())
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no hosts found; add one with: f add NAME [user@]HOST [-p PORT] [--tag TAG]")
+	}
+	return out, nil
+}
+
+func hostFiles() []string {
+	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
+		abs, err := filepath.Abs(value)
+		if err != nil {
+			return nil
+		}
+		return []string{abs}
+	}
+	var out []string
+	if dir, err := ConfigDir(); err == nil {
+		matches, _ := filepath.Glob(filepath.Join(dir, "*.yaml"))
+		sort.Strings(matches)
+		out = append(out, matches...)
+		defaultPath := filepath.Join(dir, "hosts.yaml")
+		if !containsPath(out, defaultPath) {
+			out = append(out, defaultPath)
+		}
+	}
+	if legacy, err := legacyPath(); err == nil {
+		out = append(out, legacy)
+	}
+	return out
+}
+
+func legacyPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
@@ -42,26 +109,13 @@ func Path() (string, error) {
 	return filepath.Join(dir, "aoo", "hosts.yaml"), nil
 }
 
-func Load() ([]Host, error) {
-	path, err := Path()
-	if err != nil {
-		return nil, err
-	}
-	var out []Host
-	if raw, err := os.ReadFile(path); err == nil {
-		parsed, err := parse(raw)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", path, err)
+func containsPath(paths []string, path string) bool {
+	for _, p := range paths {
+		if p == path {
+			return true
 		}
-		out = append(out, parsed...)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
 	}
-	out = merge(out, loadSSHConfig())
-	if len(out) == 0 {
-		return nil, fmt.Errorf("no hosts found; add one with: f add NAME [user@]HOST [-p PORT] [--tag TAG]")
-	}
-	return out, nil
+	return false
 }
 
 func parse(raw []byte) ([]Host, error) {
@@ -137,23 +191,41 @@ func ToEntries(list []Host) []notes.Entry {
 	entries := make([]notes.Entry, 0, len(list))
 	for _, h := range list {
 		cmd := h.Command()
-		descParts := []string{h.Name, h.Host}
-		if h.User != "" {
-			descParts = append(descParts, h.User)
+		label := h.Name
+		if label == "" {
+			label = h.Host
 		}
-		descParts = append(descParts, h.Tags...)
-		if h.Cmd != "" {
-			descParts = append(descParts, h.Cmd)
-		}
-		if h.Desc != "" {
-			descParts = append(descParts, "—", h.Desc)
-		}
+		detail := hostDetail(h)
+		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd}
+		searchParts = append(searchParts, h.Tags...)
 		entries = append(entries, notes.Entry{
-			Desc:    strings.Join(descParts, " "),
-			Actions: []notes.Action{{Desc: "ssh", Cmd: cmd}},
+			Desc:    label,
+			Note:    strings.Join(searchParts, " "),
+			Actions: []notes.Action{{Desc: detail, Cmd: cmd}},
 		})
 	}
 	return entries
+}
+
+func hostDetail(h Host) string {
+	parts := []string{}
+	target := h.Host
+	if h.User != "" && target != "" {
+		target = h.User + "@" + target
+	}
+	if target != "" {
+		if h.Port > 0 {
+			target += ":" + strconv.Itoa(h.Port)
+		}
+		parts = append(parts, target)
+	}
+	if len(h.Tags) > 0 {
+		parts = append(parts, "#"+strings.Join(h.Tags, " #"))
+	}
+	if h.Desc != "" && h.Desc != "~/.ssh/config" {
+		parts = append(parts, h.Desc)
+	}
+	return strings.Join(parts, "  ")
 }
 
 func (h Host) Command() string {
@@ -231,50 +303,125 @@ func loadSSHConfig() []Host {
 	if err != nil {
 		return nil
 	}
-	file, err := os.Open(filepath.Join(home, ".ssh", "config"))
+	path := filepath.Join(home, ".ssh", "config")
+	visited := map[string]bool{}
+	return loadSSHConfigFile(path, visited)
+}
+
+func loadSSHConfigFile(path string, visited map[string]bool) []Host {
+	path = expandPath(path)
+	abs, err := filepath.Abs(path)
+	if err == nil {
+		path = abs
+	}
+	if visited[path] {
+		return nil
+	}
+	visited[path] = true
+
+	file, err := os.Open(path)
 	if err != nil {
 		return nil
 	}
 	defer file.Close()
+	home, _ := os.UserHomeDir()
+
 	var out []Host
 	var current []string
 	attrs := map[string]string{}
+	var pendingTags []string
 	flush := func() {
 		for _, alias := range current {
 			if alias == "" || strings.ContainsAny(alias, "*?") {
 				continue
 			}
-			h := Host{Name: alias, Host: attrs["hostname"], User: attrs["user"]}
+			h := Host{Name: alias, Host: attrs["hostname"], User: attrs["user"], Tags: append([]string{}, pendingTags...)}
 			if h.Host == "" {
 				h.Host = alias
 			}
 			if p, _ := strconv.Atoi(attrs["port"]); p > 0 {
 				h.Port = p
 			}
-			h.Desc = "~/.ssh/config"
+			// Preserve the exact OpenSSH config semantics, including ProxyJump,
+			// LocalForward, RemoteCommand and options unknown to aoo.
+			h.Cmd = "ssh " + shellQuote(alias)
+			h.Desc = strings.TrimPrefix(path, home)
 			out = append(out, normalize(h))
 		}
 	}
 	s := bufio.NewScanner(file)
 	for s.Scan() {
-		line := strings.TrimSpace(strings.SplitN(s.Text(), "#", 2)[0])
-		if line == "" {
+		raw := strings.TrimSpace(s.Text())
+		if raw == "" {
 			continue
 		}
+		if strings.HasPrefix(raw, "#") {
+			if tags := parseSSHTags(raw); len(tags) > 0 {
+				pendingTags = tags
+			}
+			continue
+		}
+		line := strings.TrimSpace(strings.SplitN(raw, "#", 2)[0])
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue
 		}
 		key := strings.ToLower(fields[0])
 		value := strings.Join(fields[1:], " ")
-		if key == "host" {
+		switch key {
+		case "include":
+			for _, pattern := range fields[1:] {
+				for _, include := range expandInclude(pattern, filepath.Dir(path)) {
+					out = append(out, loadSSHConfigFile(include, visited)...)
+				}
+			}
+		case "host":
 			flush()
 			current = fields[1:]
 			attrs = map[string]string{}
-			continue
+		case "hostname", "user", "port":
+			attrs[key] = value
 		}
-		attrs[key] = value
 	}
 	flush()
 	return out
+}
+
+func parseSSHTags(line string) []string {
+	line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
+	lower := strings.ToLower(line)
+	if !strings.HasPrefix(lower, "tags:") && !strings.HasPrefix(lower, "tag:") {
+		return nil
+	}
+	_, value, _ := strings.Cut(line, ":")
+	parts := strings.FieldsFunc(value, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	var tags []string
+	for _, tag := range parts {
+		if tag = strings.Trim(strings.TrimSpace(tag), "#"); tag != "" {
+			tags = append(tags, tag)
+		}
+	}
+	return tags
+}
+
+func expandInclude(pattern, baseDir string) []string {
+	pattern = expandPath(pattern)
+	if !filepath.IsAbs(pattern) {
+		pattern = filepath.Join(baseDir, pattern)
+	}
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return nil
+	}
+	sort.Strings(matches)
+	return matches
+}
+
+func expandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+		}
+	}
+	return path
 }
