@@ -696,8 +696,9 @@ func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, det
 	right := m.previewLines(previewWidth-2, height-2, detailStyle, hintStyle)
 	bg := lipgloss.Color(m.theme.InputBG)
 	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.InputBorder)).Background(bg)
-	leftBox := boxStyle.Width(maxInt(1, listWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(left, height-2, listWidth-2), "\n"))
-	rightBox := boxStyle.Width(maxInt(1, previewWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(right, height-2, previewWidth-2), "\n"))
+	fillStyle := lipgloss.NewStyle().Background(bg)
+	leftBox := boxStyle.Width(maxInt(1, listWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(left, height-2, listWidth-2, fillStyle), "\n"))
+	rightBox := boxStyle.Width(maxInt(1, previewWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(right, height-2, previewWidth-2, fillStyle), "\n"))
 	gapText := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
 	joined := strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, leftBox, gapText, rightBox), "\n")
 	return paintBackground(joined, width, lipgloss.NewStyle().Background(bg))
@@ -743,15 +744,15 @@ func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipg
 	return clipLines(lines, height)
 }
 
-func fillLines(lines []string, height, width int) []string {
+func fillLines(lines []string, height, width int, style lipgloss.Style) []string {
 	out := clipLines(lines, height)
 	for len(out) < height {
-		out = append(out, strings.Repeat(" ", maxInt(0, width)))
+		out = append(out, style.Render(strings.Repeat(" ", maxInt(0, width))))
 	}
 	for i := range out {
 		visible := lipgloss.Width(out[i])
 		if visible < width {
-			out[i] += strings.Repeat(" ", width-visible)
+			out[i] += style.Render(strings.Repeat(" ", width-visible))
 		}
 	}
 	return out
@@ -816,14 +817,15 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	if selected {
 		prefix = m.theme.SelectedMark + " "
 	}
-	contentWidth := maxInt(12, width-3)
+	rowWidth := maxInt(12, width)
+	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix))
 	labelText := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
 	if m.twoLineResults() {
 		labelText = truncateRunes(labelText, contentWidth)
 		if selected {
-			return prefix + selectedStyle.Render(padRight(labelText, contentWidth))
+			return selectedStyle.Render(padRight(prefix+labelText, rowWidth))
 		}
-		return prefix + rowStyle.Render(labelText)
+		return rowStyle.Render(padRight(prefix+labelText, rowWidth))
 	}
 
 	detailText := match.Detail
@@ -845,11 +847,11 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	}
 	combined := compactResultLine(primary, secondary, contentWidth)
 	if selected {
-		return prefix + selectedStyle.Render(padRight(combined, contentWidth))
+		return selectedStyle.Render(padRight(prefix+combined, rowWidth))
 	}
 
 	if secondary == "" || combined == primary {
-		return prefix + rowStyle.Render(combined)
+		return rowStyle.Render(padRight(prefix+combined, rowWidth))
 	}
 
 	combinedRunes := []rune(combined)
@@ -857,7 +859,13 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	if split > len(combinedRunes) {
 		split = len(combinedRunes)
 	}
-	return prefix + rowStyle.Render(string(combinedRunes[:split])) + detailStyle.Render(string(combinedRunes[split:]))
+	first := prefix + string(combinedRunes[:split])
+	second := string(combinedRunes[split:])
+	visible := utf8.RuneCountInString(first) + utf8.RuneCountInString(second)
+	if visible < rowWidth {
+		second += strings.Repeat(" ", rowWidth-visible)
+	}
+	return rowStyle.Render(first) + detailStyle.Render(second)
 }
 
 func compactResultLine(primary, secondary string, width int) string {
