@@ -667,9 +667,10 @@ func (m PickerModel) shelfView(width, height int, inputLine string, rowStyle, se
 	compact.options.Layout = "top"
 	body := compact.resultBlock(width, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)
 
-	help := helpStyle.Render(truncateRunes(pickerHelpText(), width))
+	help := helpStyle.Width(width).Render(truncateRunes(pickerHelpText(), width))
 	lines := append([]string{queryBox}, body...)
 	lines = append(lines, help)
+	lines = paintBackground(lines, width, lipgloss.NewStyle().Background(bg))
 	return lipgloss.NewStyle().Width(width).Background(bg).Render(strings.Join(lines, "\n"))
 }
 
@@ -693,10 +694,13 @@ func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, det
 
 	left := m.resultLines(listWidth-2, rowStyle, selectedStyle, detailStyle, hintStyle)
 	right := m.previewLines(previewWidth-2, height-2, detailStyle, hintStyle)
-	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.InputBorder)).Background(lipgloss.Color(m.theme.InputBG))
+	bg := lipgloss.Color(m.theme.InputBG)
+	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.InputBorder)).Background(bg)
 	leftBox := boxStyle.Width(maxInt(1, listWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(left, height-2, listWidth-2), "\n"))
 	rightBox := boxStyle.Width(maxInt(1, previewWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(right, height-2, previewWidth-2), "\n"))
-	return strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, leftBox, strings.Repeat(" ", gap), rightBox), "\n")
+	gapText := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
+	joined := strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, leftBox, gapText, rightBox), "\n")
+	return paintBackground(joined, width, lipgloss.NewStyle().Background(bg))
 }
 
 func (m PickerModel) useRightPreview(width int) bool {
@@ -742,7 +746,25 @@ func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipg
 func fillLines(lines []string, height, width int) []string {
 	out := clipLines(lines, height)
 	for len(out) < height {
-		out = append(out, "")
+		out = append(out, strings.Repeat(" ", maxInt(0, width)))
+	}
+	for i := range out {
+		visible := lipgloss.Width(out[i])
+		if visible < width {
+			out[i] += strings.Repeat(" ", width-visible)
+		}
+	}
+	return out
+}
+
+func paintBackground(lines []string, width int, style lipgloss.Style) []string {
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		visible := lipgloss.Width(line)
+		if visible < width {
+			line += strings.Repeat(" ", width-visible)
+		}
+		out[i] = style.Render(line)
 	}
 	return out
 }
