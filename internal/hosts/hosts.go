@@ -17,16 +17,17 @@ import (
 const envHostsFile = "AOO_HOSTS_FILE"
 
 type Host struct {
-	Name    string   `yaml:"name"`
-	Host    string   `yaml:"host"`
-	User    string   `yaml:"user,omitempty"`
-	Port    int      `yaml:"port,omitempty"`
-	Tags    []string `yaml:"tags,omitempty"`
-	Args    string   `yaml:"args,omitempty"`
-	Cmd     string   `yaml:"cmd,omitempty"`
-	Desc    string   `yaml:"desc,omitempty"`
-	Preview string   `yaml:"preview,omitempty"`
-	Mode    string   `yaml:"-"`
+	Name          string   `yaml:"name"`
+	Host          string   `yaml:"host"`
+	User          string   `yaml:"user,omitempty"`
+	Port          int      `yaml:"port,omitempty"`
+	Tags          []string `yaml:"tags,omitempty"`
+	Args          string   `yaml:"args,omitempty"`
+	Cmd           string   `yaml:"cmd,omitempty"`
+	Desc          string   `yaml:"desc,omitempty"`
+	Preview       string   `yaml:"preview,omitempty"`
+	Mode          string   `yaml:"-"`
+	ForwardRemote string   `yaml:"-"`
 }
 
 type File struct {
@@ -225,7 +226,11 @@ func DisplayName(h Host) string {
 	if strings.HasPrefix(name, "ssh-") {
 		name = strings.TrimPrefix(name, "ssh-")
 	}
-	return humanizeRouteSuffix(name)
+	name = humanizeRouteSuffix(name)
+	if suffix := forwardDisplaySuffix(h); suffix != "" {
+		name += " " + suffix
+	}
+	return name
 }
 
 func humanizeRouteSuffix(name string) string {
@@ -244,12 +249,77 @@ func humanizeRouteSuffix(name string) string {
 		if strings.HasSuffix(name, rule.suffix) {
 			base := strings.TrimSuffix(name, rule.suffix)
 			if base == "" {
-				return name
+				break
 			}
-			return base + " [" + rule.label + "]"
+			name = base + " [" + rule.label + "]"
+			break
 		}
 	}
 	return name
+}
+
+func forwardDisplaySuffix(h Host) string {
+	if !strings.Contains(" "+strings.ToLower(h.Mode)+" ", " forwards ") {
+		return ""
+	}
+	remote := strings.TrimSpace(h.ForwardRemote)
+	if remote == "" {
+		remote = forwardRemoteFromText(h.Args + " " + h.Cmd + " " + h.Preview)
+	}
+	if remote == "" {
+		return ""
+	}
+	return "[remote " + remote + "]"
+}
+
+func forwardRemoteSummary(attrs map[string]string) string {
+	for _, key := range []string{"localforward", "remoteforward"} {
+		if value := strings.TrimSpace(attrs[key]); value != "" {
+			if remote := forwardRemoteFromText(value); remote != "" {
+				return remote
+			}
+		}
+	}
+	if value := strings.TrimSpace(attrs["dynamicforward"]); value != "" {
+		return "socks"
+	}
+	return ""
+}
+
+func forwardRemoteFromText(value string) string {
+	fields := strings.Fields(strings.TrimSpace(value))
+	if len(fields) == 0 {
+		return ""
+	}
+	// OpenSSH LocalForward/RemoteForward: bind/local port first, destination second.
+	if len(fields) >= 2 {
+		return remotePortLabel(fields[1])
+	}
+	for _, field := range fields {
+		if strings.Contains(field, ":") {
+			return remotePortLabel(field)
+		}
+	}
+	return ""
+}
+
+func remotePortLabel(value string) string {
+	value = strings.Trim(strings.TrimSpace(value), "'\"")
+	if value == "" {
+		return ""
+	}
+	parts := strings.Split(value, ":")
+	port := parts[len(parts)-1]
+	if port == "" {
+		return value
+	}
+	if len(parts) >= 2 {
+		host := strings.Join(parts[:len(parts)-1], ":")
+		if host != "" && host != "localhost" && host != "127.0.0.1" {
+			return host + ":" + port
+		}
+	}
+	return port
 }
 
 func hostDetail(h Host) string {
@@ -388,6 +458,7 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 			// RemoteCommand-based entries show the useful command on the right.
 			h.Cmd = "ssh " + shellQuote(alias)
 			h.Mode = classifySSHEntry(attrs)
+			h.ForwardRemote = forwardRemoteSummary(attrs)
 			h.Preview = expandedSSHCommand(alias, attrs)
 			out = append(out, normalize(h))
 		}
