@@ -508,11 +508,11 @@ func classifyHostSyntax(h Host) string {
 	if strings.Contains(text, " -l ") || strings.Contains(text, " -r ") || strings.Contains(text, " -d ") || strings.Contains(text, " localforward ") || strings.Contains(text, " remoteforward ") || strings.Contains(text, " dynamicforward ") {
 		return "forwards"
 	}
-	if strings.TrimSpace(h.Cmd) != "" && !looksLikePlainSSH(h.Cmd) {
-		return "commands"
-	}
 	if strings.Contains(text, " -j ") || strings.Contains(text, " proxyjump ") || strings.Contains(text, " proxycommand ") {
 		return "jumps"
+	}
+	if strings.TrimSpace(h.Cmd) != "" && !looksLikePlainSSH(h.Cmd) {
+		return "commands"
 	}
 	return "general"
 }
