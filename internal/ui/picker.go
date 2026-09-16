@@ -824,7 +824,7 @@ func commandPreviewLines(value string, width int) []string {
 	groups := []string{fields[0]}
 	for i := 1; i < len(fields); i++ {
 		field := fields[i]
-		if (field == "-o" || field == "-J" || field == "-p" || field == "-i") && i+1 < len(fields) {
+		if (field == "-o" || field == "-J" || field == "-p" || field == "-i" || field == "-L" || field == "-R" || field == "-D") && i+1 < len(fields) {
 			groups = append(groups, field+" "+fields[i+1])
 			i++
 			continue

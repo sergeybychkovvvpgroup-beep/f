@@ -223,8 +223,10 @@ func DisplayName(h Host) string {
 	// A lot of imported runbook aliases were named ssh-<host>. In a SSH
 	// picker that prefix is redundant noise; keep the real alias in Cmd so
 	// execution still uses the exact OpenSSH config entry.
-	if strings.HasPrefix(name, "ssh-") {
-		name = strings.TrimPrefix(name, "ssh-")
+	for _, prefix := range []string{"ssh-", "aoo-"} {
+		if strings.HasPrefix(name, prefix) {
+			name = strings.TrimPrefix(name, prefix)
+		}
 	}
 	name = humanizeRouteSuffix(name)
 	if suffix := forwardDisplaySuffix(h); suffix != "" {
@@ -559,6 +561,15 @@ func expandedSSHCommand(alias string, attrs map[string]string) string {
 	if value := strings.TrimSpace(attrs["identityfile"]); value != "" {
 		parts = append(parts, "-i", value)
 	}
+	if value := strings.TrimSpace(attrs["localforward"]); value != "" {
+		parts = append(parts, "-L", value)
+	}
+	if value := strings.TrimSpace(attrs["remoteforward"]); value != "" {
+		parts = append(parts, "-R", value)
+	}
+	if value := strings.TrimSpace(attrs["dynamicforward"]); value != "" {
+		parts = append(parts, "-D", value)
+	}
 	for _, opt := range []string{
 		"hostkeyalgorithms",
 		"pubkeyacceptedalgorithms",
@@ -600,7 +611,7 @@ func multilineShellCommand(parts []string) string {
 	groups := []string{shellQuote(parts[0])}
 	for i := 1; i < len(parts); i++ {
 		part := parts[i]
-		if (part == "-o" || part == "-J" || part == "-p" || part == "-i") && i+1 < len(parts) {
+		if (part == "-o" || part == "-J" || part == "-p" || part == "-i" || part == "-L" || part == "-R" || part == "-D") && i+1 < len(parts) {
 			groups = append(groups, shellQuote(part)+" "+shellQuote(parts[i+1]))
 			i++
 			continue
