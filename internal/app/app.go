@@ -87,8 +87,14 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 	}
 
 	selected, _, nextQuery, cancelled, editRequested, printOnly, createKind, err := ui.RunPicker(hosts.ToEntries(list), *query, themeName, options)
-	if err != nil || cancelled || editRequested {
+	if err != nil || cancelled {
 		return err
+	}
+	if editRequested {
+		if selected == nil {
+			return nil
+		}
+		return editSSHConfigEntry(*selected, stdout, stderr)
 	}
 	if createKind != "" {
 		saved, err := promptAndSaveHost(nextQuery, stdout, stderr)
@@ -110,6 +116,199 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	return runCommand(*selected, action, stdout, stderr)
+}
+
+func editSSHConfigEntry(entry notes.Entry, stdout, stderr io.Writer) error {
+	action := entry.QuickAction()
+	if action == nil || !action.IsCmd() {
+		return errors.New("selected entry has no ssh command to edit")
+	}
+	alias, ok := sshAliasFromCommand(action.Cmd)
+	if !ok {
+		return fmt.Errorf("cannot edit non-ssh-alias command: %s", action.Cmd)
+	}
+	block, err := editableSSHBlock(alias)
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp("", "aoo-ssh-edit-*.conf")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.WriteString(block); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	editor := strings.TrimSpace(os.Getenv("EDITOR"))
+	if editor == "" {
+		editor = "nano"
+	}
+	cmd := exec.Command("/bin/sh", "-lc", shellQuoteArg(editor)+" "+shellQuoteArg(tmpPath))
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	edited, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(edited)) == "" {
+		return errors.New("edited SSH block is empty; aborting")
+	}
+	path, err := userSSHConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := upsertMarkedBlock(path, alias, strings.TrimRight(string(edited), "\n")+"\n"); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "saved SSH override: %s\nfile: %s\n", alias, path)
+	return nil
+}
+
+func shellQuoteArg(s string) string {
+	if s == "" {
+		return "''"
+	}
+	if strings.IndexFunc(s, func(r rune) bool {
+		return !(r == '-' || r == '_' || r == '.' || r == '/' || r == ':' || r == '@' || r == '+' || r == '=' || r == ',' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z')
+	}) < 0 {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func sshAliasFromCommand(command string) (string, bool) {
+	fields := strings.Fields(strings.TrimSpace(command))
+	if len(fields) != 2 || fields[0] != "ssh" {
+		return "", false
+	}
+	alias := strings.Trim(fields[1], "'\"")
+	if alias == "" || strings.HasPrefix(alias, "-") || strings.ContainsAny(alias, " \t\n") {
+		return "", false
+	}
+	return alias, true
+}
+
+func editableSSHBlock(alias string) (string, error) {
+	attrs := sshG(alias)
+	lines := []string{
+		"# Edit this block. It will be saved to ~/.ssh/config.d/00-aoo-user.conf",
+		"# This file is included before generated configs, so these values win.",
+		"Host " + alias,
+	}
+	add := func(key, value string) {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			lines = append(lines, "  "+key+" "+value)
+		}
+	}
+	add("HostName", attrs["hostname"])
+	add("User", attrs["user"])
+	if port := strings.TrimSpace(attrs["port"]); port != "" && port != "22" {
+		add("Port", port)
+	}
+	add("ProxyJump", attrs["proxyjump"])
+	add("ProxyCommand", attrs["proxycommand"])
+	for _, value := range attrsList(attrs, "localforward") {
+		add("LocalForward", value)
+	}
+	for _, value := range attrsList(attrs, "remoteforward") {
+		add("RemoteForward", value)
+	}
+	for _, value := range attrsList(attrs, "dynamicforward") {
+		add("DynamicForward", value)
+	}
+	add("RemoteCommand", attrs["remotecommand"])
+	if value := strings.TrimSpace(attrs["requesttty"]); value != "" && value != "auto" {
+		add("RequestTTY", value)
+	}
+	if len(lines) == 3 {
+		lines = append(lines, "  HostName ")
+	}
+	return strings.Join(lines, "\n") + "\n", nil
+}
+
+func sshG(alias string) map[string]string {
+	cmd := exec.Command("ssh", "-G", alias)
+	out, err := cmd.Output()
+	if err != nil {
+		return map[string]string{}
+	}
+	attrs := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok {
+			continue
+		}
+		key = strings.ToLower(strings.TrimSpace(key))
+		value = strings.TrimSpace(value)
+		if key == "" || value == "" {
+			continue
+		}
+		if prev := attrs[key]; prev != "" {
+			attrs[key] = prev + "\n" + value
+		} else {
+			attrs[key] = value
+		}
+	}
+	return attrs
+}
+
+func attrsList(attrs map[string]string, key string) []string {
+	value := strings.TrimSpace(attrs[key])
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, "\n")
+}
+
+func userSSHConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".ssh", "config.d", "00-aoo-user.conf"), nil
+}
+
+func upsertMarkedBlock(path, alias, block string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	begin := "# aoo-edit begin " + alias
+	end := "# aoo-edit end " + alias
+	marked := begin + "\n" + block + end + "\n"
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	text := string(raw)
+	start := strings.Index(text, begin)
+	finish := strings.Index(text, end)
+	if start >= 0 && finish >= start {
+		finish += len(end)
+		if finish < len(text) && text[finish] == '\n' {
+			finish++
+		}
+		text = text[:start] + marked + text[finish:]
+	} else {
+		if strings.TrimSpace(text) != "" && !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		if strings.TrimSpace(text) != "" {
+			text += "\n"
+		}
+		text += marked
+	}
+	return os.WriteFile(path, []byte(text), 0o600)
 }
 
 func runCommand(entry notes.Entry, action *notes.Action, stdout, stderr io.Writer) error {

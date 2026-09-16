@@ -114,7 +114,7 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedLine = entry.PreviewHitLine(m.preview, m.activePreviewHit())
 			m.printOnly = isPrintOnlyKey(msg.String())
 			return m, tea.Quit
-		case "ctrl+e", "alt+e":
+		case "e", "ctrl+e", "alt+e":
 			if len(m.matches) == 0 {
 				return m, nil
 			}
@@ -562,7 +562,7 @@ func (m PickerModel) syncStatusColor() string {
 }
 
 func pickerHelpText() string {
-	return "F1 general  F2 jumps  F3 forwards  F4 commands  " + string([]rune{0x2191, 0x2193}) + " select  enter ssh  ctrl+y print  esc quit"
+	return "F1 general  F2 jumps  F3 forwards  F4 commands  " + string([]rune{0x2191, 0x2193}) + " select  enter ssh  e edit  ctrl+y print  esc quit"
 }
 
 func isPrintOnlyKey(key string) bool {
