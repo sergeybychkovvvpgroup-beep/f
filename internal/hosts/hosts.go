@@ -225,6 +225,30 @@ func DisplayName(h Host) string {
 	if strings.HasPrefix(name, "ssh-") {
 		name = strings.TrimPrefix(name, "ssh-")
 	}
+	return humanizeRouteSuffix(name)
+}
+
+func humanizeRouteSuffix(name string) string {
+	type suffixRule struct {
+		suffix string
+		label  string
+	}
+	rules := []suffixRule{
+		{suffix: "-netbird-emergency", label: "netbird emergency"},
+		{suffix: "-netbird", label: "netbird"},
+		{suffix: "-router-wh-jump", label: "router wh jump"},
+		{suffix: "-jump", label: "jump"},
+		{suffix: "-tunnel", label: "tunnel"},
+	}
+	for _, rule := range rules {
+		if strings.HasSuffix(name, rule.suffix) {
+			base := strings.TrimSuffix(name, rule.suffix)
+			if base == "" {
+				return name
+			}
+			return base + " [" + rule.label + "]"
+		}
+	}
 	return name
 }
 
