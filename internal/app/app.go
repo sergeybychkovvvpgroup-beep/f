@@ -533,6 +533,12 @@ func gitRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
+	// Only auto-sync when config.d itself is a repository. If it merely lives
+	// inside a parent dotfiles repo (for example ~/.config), pulling the parent
+	// can fail on unrelated local desktop config changes and confuse the picker.
+	if filepath.Clean(root) != filepath.Clean(dir) {
+		return "", false
+	}
 	return root, true
 }
 
