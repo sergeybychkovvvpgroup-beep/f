@@ -201,8 +201,8 @@ func sshAliasFromCommand(command string) (string, bool) {
 func editableSSHBlock(alias string) (string, error) {
 	attrs := sshG(alias)
 	lines := []string{
-		"# Edit this block. It will be saved to ~/.ssh/config.d/00-aoo-user.conf",
-		"# This file is included before generated configs, so these values win.",
+		"# Edit this block. It will be saved to ~/.ssh/config.d/aoo.conf",
+		"# aoo uses the normal OpenSSH config.d file directly; no hidden store.",
 		"Host " + alias,
 	}
 	add := func(key, value string) {
@@ -276,7 +276,7 @@ func userSSHConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ssh", "config.d", "00-aoo-user.conf"), nil
+	return filepath.Join(home, ".ssh", "config.d", "aoo.conf"), nil
 }
 
 func upsertMarkedBlock(path, alias, block string) error {
