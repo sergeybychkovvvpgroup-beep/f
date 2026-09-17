@@ -196,8 +196,8 @@ func sshAliasFromCommand(command string) (string, bool) {
 func editableSSHBlock(alias string) (string, error) {
 	attrs := sshG(alias)
 	lines := []string{
-		"# Edit this block. It will be saved to ~/.ssh/config.d/aoo.conf",
-		"# aoo uses the normal OpenSSH config.d file directly; no hidden store.",
+		"# Edit this block. It will be saved to ~/.ssh/config.d/aoo_hosts/aoo.conf",
+		"# aoo uses its dedicated OpenSSH config.d subdirectory; no hidden store.",
 		"Host " + alias,
 	}
 	add := func(key, value string) {
@@ -279,7 +279,7 @@ func sshConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ssh", "config.d"), nil
+	return filepath.Join(home, ".ssh", "config.d", "aoo_hosts"), nil
 }
 
 func upsertMarkedBlock(path, alias, block string) error {
@@ -529,8 +529,8 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 func runSetup(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	force := fs.Bool("force", false, "replace existing non-git ~/.ssh/config.d after backup")
-	adopt := fs.Bool("adopt", false, "turn current ~/.ssh/config.d into the hosts git repo and push it")
+	force := fs.Bool("force", false, "replace existing non-git ~/.ssh/config.d/aoo_hosts after backup")
+	adopt := fs.Bool("adopt", false, "turn current ~/.ssh/config.d/aoo_hosts into the hosts git repo and push it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -548,6 +548,11 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	if err := ensureSSHConfigInclude(); err != nil {
 		return err
 	}
+	if *adopt {
+		if err := seedAooHostsDirForAdopt(dir, stdout); err != nil {
+			return err
+		}
+	}
 	if root, ok := gitRoot(dir); ok {
 		if err := runUpgradeGit(root, stdout, stderr, "remote", "set-url", "origin", repoURL); err != nil {
 			return err
@@ -563,7 +568,7 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 			if err := adoptHostsRepo(dir, repoURL, stdout, stderr); err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "adopted current SSH config.d as hosts repo: %s\n", dir)
+			fmt.Fprintf(stdout, "adopted current aoo_hosts SSH config repo: %s\n", dir)
 			return nil
 		}
 		if !*force {
@@ -571,9 +576,12 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 		}
 		backup := fmt.Sprintf("%s.backup.%s", dir, timestamp())
 		if err := os.Rename(dir, backup); err != nil {
-			return fmt.Errorf("backup existing config.d: %w", err)
+			return fmt.Errorf("backup existing aoo_hosts: %w", err)
 		}
-		fmt.Fprintf(stdout, "backed up existing SSH config.d: %s\n", backup)
+		fmt.Fprintf(stdout, "backed up existing aoo_hosts SSH config repo: %s\n", backup)
+	}
+	if *adopt {
+		return fmt.Errorf("%s is empty; put *.conf files there first or keep legacy ~/.ssh/config.d/aoo.conf for automatic import", dir)
 	}
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
 		return err
@@ -586,6 +594,39 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	}
 	_ = os.Chmod(dir, 0o700)
 	fmt.Fprintf(stdout, "installed hosts repo: %s\n", dir)
+	return nil
+}
+
+func seedAooHostsDirForAdopt(dir string, stdout io.Writer) error {
+	if nonEmptyDir(dir) {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	legacy := filepath.Join(home, ".ssh", "config.d", "aoo.conf")
+	if _, err := os.Stat(legacy); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	target := filepath.Join(dir, "aoo.conf")
+	if _, err := os.Stat(target); err == nil {
+		return nil
+	}
+	raw, err := os.ReadFile(legacy)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(target, raw, 0o600); err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "imported legacy hosts: %s -> %s\n", legacy, target)
 	return nil
 }
 
@@ -634,13 +675,15 @@ func ensureSSHConfigInclude() error {
 		return err
 	}
 	text := string(raw)
-	if strings.Contains(text, "Include ~/.ssh/config.d/*.conf") || strings.Contains(text, "Include "+filepath.Join(home, ".ssh", "config.d", "*.conf")) {
+	includeRel := "Include ~/.ssh/config.d/aoo_hosts/*.conf"
+	includeAbs := "Include " + filepath.Join(home, ".ssh", "config.d", "aoo_hosts", "*.conf")
+	if strings.Contains(text, includeRel) || strings.Contains(text, includeAbs) {
 		return nil
 	}
 	if strings.TrimSpace(text) != "" && !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
-	text = "Include ~/.ssh/config.d/*.conf\n" + text
+	text = includeRel + "\n" + text
 	return os.WriteFile(path, []byte(text), 0o600)
 }
 
@@ -656,7 +699,7 @@ func timestamp() string {
 func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
 	dir, err := sshConfigDir()
 	if err != nil {
-		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no ssh config.d"}
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no aoo_hosts"}
 	}
 	root, ok := gitRoot(dir)
 	if !ok {
@@ -672,7 +715,7 @@ func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
 func pushHostsConfig(stderr io.Writer) ui.SyncStatus {
 	dir, err := sshConfigDir()
 	if err != nil {
-		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no ssh config.d"}
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no aoo_hosts"}
 	}
 	root, ok := gitRoot(dir)
 	if !ok {
@@ -705,9 +748,9 @@ func gitRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
-	// Only auto-sync when config.d itself is a repository. If it merely lives
-	// inside a parent dotfiles repo (for example ~/.config), pulling the parent
-	// can fail on unrelated local desktop config changes and confuse the picker.
+	// Only auto-sync when the dedicated aoo_hosts directory itself is a
+	// repository. If it merely lives inside a parent dotfiles repo, pulling the
+	// parent can fail on unrelated local config changes and confuse the picker.
 	if filepath.Clean(root) != filepath.Clean(dir) {
 		return "", false
 	}
@@ -758,13 +801,13 @@ Usage:
   %s add NAME HOST      also works for scripted adding
   %s list               print saved/imported hosts
   %s config show        show config/hosts paths
-  %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d
-  %s setup --adopt REPO adopt current ~/.ssh/config.d as hosts repo
+  %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/aoo_hosts
+  %s setup --adopt REPO adopt current ~/.ssh/config.d/aoo_hosts as hosts repo
 
 Add options:
   -user USER  -p PORT  --tag TAG  --desc TEXT  --args "-A -J jump"
 
-Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d.
+Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/aoo_hosts.
 Aliases from ~/.ssh/config are shown automatically.
 `, name, name, name, name, name, name, name, name)
 }

@@ -20,7 +20,7 @@ Then attach your hosts repository:
 f setup <ssh-config-repo-url>
 ```
 
-`f setup` clones the repo into `~/.ssh/config.d`, ensures `~/.ssh/config` has `Include ~/.ssh/config.d/*.conf`, and the machine is ready to use. To publish the current machine's existing `~/.ssh/config.d` as the initial repo contents, run `f setup --adopt <ssh-config-repo-url>` once on that machine.
+`f setup` clones the repo into `~/.ssh/config.d/aoo_hosts`, ensures `~/.ssh/config` has `Include ~/.ssh/config.d/aoo_hosts/*.conf`, and the machine is ready to use. To publish the current machine's existing `~/.ssh/config.d/aoo_hosts` as the initial repo contents, run `f setup --adopt <ssh-config-repo-url>` once on that machine.
 
 ## Quick start
 
@@ -60,13 +60,13 @@ The current mode is shown in the top status line.
 The expected active file is:
 
 ```text
-~/.ssh/config.d/aoo.conf
+~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
 `~/.ssh/config` should include it, commonly via:
 
 ```ssh-config
-Include ~/.ssh/config.d/*.conf
+Include ~/.ssh/config.d/aoo_hosts/*.conf
 ```
 
 The picker reads `~/.ssh/config` and follows `Include` directives. For imported SSH config entries, execution uses the exact alias:
@@ -90,7 +90,7 @@ Behavior:
 3. On save, it upserts the marked block into:
 
 ```text
-~/.ssh/config.d/aoo.conf
+~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
 The block is wrapped with markers:
@@ -103,7 +103,7 @@ Host alias-name
 # aoo-edit end alias-name
 ```
 
-Generated or imported source files are not rewritten; `~/.ssh/config.d/aoo.conf` is the source of truth for user edits. If `~/.ssh/config.d` is a git repository, aoo pulls on start and commits/pushes after `e` edits or `f add`, so host sync works in both directions similarly to nb notes.
+Generated or imported source files are not rewritten; `~/.ssh/config.d/aoo_hosts/aoo.conf` is the source of truth for user edits. If `~/.ssh/config.d/aoo_hosts` is a git repository, aoo pulls on start and commits/pushes after `e` edits or `f add`, so host sync works in both directions similarly to nb notes.
 
 ## Display conventions
 
@@ -147,7 +147,7 @@ f add db 10.20.30.40 -user admin -p 2222 --args "-A -J jump"
 
 `Ctrl+N` in the picker also starts interactive add.
 
-New entries are written as marked OpenSSH blocks into `~/.ssh/config.d/aoo.conf`. Legacy YAML hosts under `~/.config/aoo/` are still read for compatibility, but new work should live in the SSH config repository.
+New entries are written as marked OpenSSH blocks into `~/.ssh/config.d/aoo_hosts/aoo.conf`. Legacy YAML hosts under `~/.config/aoo/` are still read for compatibility, but new work should live in the SSH config repository.
 
 ## Build and install from source
 

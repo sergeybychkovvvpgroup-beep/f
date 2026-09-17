@@ -13,18 +13,18 @@ Do not reintroduce separate hidden storage for imported SSH config entries. The 
 Active user SSH config is expected to be a single ordinary file:
 
 ```text
-~/.ssh/config.d/aoo.conf
+~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
 `~/.ssh/config` should include it through:
 
 ```ssh-config
-Include ~/.ssh/config.d/*.conf
+Include ~/.ssh/config.d/aoo_hosts/*.conf
 ```
 
 The historical/generated files may exist in archive directories, but active config.d should ideally have one `aoo.conf` file.
 
-User edit action must write back to `~/.ssh/config.d/aoo.conf`, not a hidden DB and not per-feature override files like `00-aoo-user.conf`.
+User edit action must write back to `~/.ssh/config.d/aoo_hosts/aoo.conf`, not a hidden DB and not per-feature override files like `00-aoo-user.conf`.
 
 ## Important UX decisions
 
@@ -131,12 +131,12 @@ ssh \
 New custom hosts are written back to ordinary OpenSSH config blocks in:
 
 ```text
-~/.ssh/config.d/aoo.conf
+~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
 Legacy YAML files under `~/.config/aoo/config.d/*.yaml` and `~/.config/aoo/hosts.yaml` may still be read for compatibility, but they are not the write path for new additions.
 
-If `~/.ssh/config.d` is a git repository, host sync should behave like nb notes: pull before reading/writing where practical, then commit and push after host edits.
+If `~/.ssh/config.d/aoo_hosts` is a git repository, host sync should behave like nb notes: pull before reading/writing where practical, then commit and push after host edits.
 
 ## Build, test, install
 
@@ -181,4 +181,4 @@ Commit and push meaningful changes to `main` after tests pass.
 - Replace editor-based `e` with an inline Bubble Tea popup only if it can safely edit multiline SSH config blocks.
 - Improve normalization of route/display names if more noisy aliases appear.
 - Consider frecency sorting later, but do not hide exact fuzzy-search behavior.
-- Keep `~/.ssh/config.d` consolidated; avoid adding new generated active `.conf` files unless the user explicitly asks.
+- Keep `~/.ssh/config.d/aoo_hosts` consolidated; avoid adding new generated active `.conf` files unless the user explicitly asks.

@@ -262,7 +262,7 @@ func renderConfig(cfg File) string {
 	}
 	lines := []string{
 		"# f / aoo — SSH host picker",
-		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/*.conf",
+		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/aoo_hosts/*.conf",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
 		"# show_list_on_start: render results when query is empty",

@@ -20,7 +20,9 @@ curl -fsSL https://git.dawq.me/sergeyb/aoo/raw/branch/main/install.sh | sh
 f setup <ssh-config-repo-url>
 ```
 
-`f setup` клонирует repo в `~/.ssh/config.d`, добавляет в `~/.ssh/config` строку `Include ~/.ssh/config.d/*.conf`, и машина готова к работе. Чтобы один раз опубликовать текущий список хостов этой машины как начальное содержимое repo, используй `f setup --adopt <ssh-config-repo-url>`.
+`f setup` клонирует repo в `~/.ssh/config.d/aoo_hosts`, добавляет в `~/.ssh/config` строку `Include ~/.ssh/config.d/aoo_hosts/*.conf`, и машина готова к работе. Чтобы один раз опубликовать текущий список хостов этой машины как начальное содержимое repo, используй `f setup --adopt <ssh-config-repo-url>`.
+
+Подробная статья: [Установка aoo/f на свежей машине](docs/fresh-machine-install.ru.md).
 
 ## Быстрый старт
 
@@ -60,13 +62,13 @@ f config sync # подтянуть изменения хостов
 Ожидаемый активный файл:
 
 ```text
-~/.ssh/config.d/aoo.conf
+~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
 В `~/.ssh/config` обычно должен быть include:
 
 ```ssh-config
-Include ~/.ssh/config.d/*.conf
+Include ~/.ssh/config.d/aoo_hosts/*.conf
 ```
 
 Picker читает `~/.ssh/config` и следует `Include` директивам. Для импортированных SSH config entries запуск идёт через точный alias:
@@ -94,7 +96,7 @@ e
 3. После сохранения block upsert-ится в:
 
 ```text
-~/.ssh/config.d/aoo.conf
+~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
 Block оборачивается маркерами:
@@ -107,7 +109,7 @@ Host alias-name
 # aoo-edit end alias-name
 ```
 
-Generated/imported source files не переписываются. Пользовательские правки должны жить в обычном активном `aoo.conf`. Если `~/.ssh/config.d` является git-репозиторием, aoo делает pull при запуске и commit/push после редактирования через `e` или `f add`, то есть синк хостов работает в обе стороны по модели nb notes.
+Generated/imported source files не переписываются. Пользовательские правки должны жить в обычном активном `aoo.conf`. Если `~/.ssh/config.d/aoo_hosts` является git-репозиторием, aoo делает pull при запуске и commit/push после редактирования через `e` или `f add`, то есть синк хостов работает в обе стороны по модели nb notes.
 
 ## Правила отображения
 
@@ -151,7 +153,7 @@ f add db 10.20.30.40 -user admin -p 2222 --args "-A -J jump"
 
 `Ctrl+N` в picker запускает интерактивное добавление.
 
-Новые записи сохраняются как marked OpenSSH blocks в `~/.ssh/config.d/aoo.conf`. Legacy YAML hosts из `~/.config/aoo/` пока читаются для совместимости, но новые хосты должны жить в SSH config repo.
+Новые записи сохраняются как marked OpenSSH blocks в `~/.ssh/config.d/aoo_hosts/aoo.conf`. Legacy YAML hosts из `~/.config/aoo/` пока читаются для совместимости, но новые хосты должны жить в SSH config repo.
 
 ## Сборка и установка из исходников
 
