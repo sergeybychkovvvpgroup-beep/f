@@ -14,13 +14,11 @@ import (
 const (
 	envNotesDir       = "AOO_NOTES_DIR"
 	legacyEnvNotesDir = "TERM_NOTES_DIR"
-	envTheme          = "AOO_THEME"
 )
 
 type File struct {
 	NotesDir         string `yaml:"notes_dir"`
 	NotesRepo        string `yaml:"notes_repo"`
-	Theme            string `yaml:"theme"`
 	Layout           string `yaml:"layout"`
 	FullScreen       bool   `yaml:"full_screen"`
 	PickerHeight     int    `yaml:"picker_height"`
@@ -33,7 +31,6 @@ type File struct {
 type rawFile struct {
 	NotesDir            string `yaml:"notes_dir"`
 	NotesRepo           string `yaml:"notes_repo"`
-	Theme               string `yaml:"theme"`
 	Layout              string `yaml:"layout"`
 	FullScreen          *bool  `yaml:"full_screen"`
 	PickerHeight        *int   `yaml:"picker_height"`
@@ -82,7 +79,6 @@ func ConfigPath() (string, error) {
 
 func DefaultFile() File {
 	return File{
-		Theme:            "sshelf",
 		Layout:           "bottom",
 		FullScreen:       true,
 		PickerHeight:     14,
@@ -119,9 +115,6 @@ func Load() (File, error) {
 
 	cfg.NotesDir = strings.TrimSpace(parsed.NotesDir)
 	cfg.NotesRepo = strings.TrimSpace(parsed.NotesRepo)
-	if value := strings.TrimSpace(parsed.Theme); value != "" {
-		cfg.Theme = value
-	}
 	if value := strings.TrimSpace(parsed.Layout); value != "" {
 		cfg.Layout = normalizeLayout(value)
 	}
@@ -249,46 +242,6 @@ func SetNotesRepo(repo string) error {
 	return Save(cfg)
 }
 
-func ResolveTheme(cliValue string) (string, string, error) {
-	if value := strings.TrimSpace(cliValue); value != "" {
-		return value, "flag --theme", nil
-	}
-
-	if value := strings.TrimSpace(os.Getenv(envTheme)); value != "" {
-		return value, envTheme, nil
-	}
-
-	cfg, err := Load()
-	if err != nil {
-		return "", "", err
-	}
-
-	if value := strings.TrimSpace(cfg.Theme); value != "" {
-		return value, "config", nil
-	}
-
-	return DefaultFile().Theme, "default", nil
-}
-
-func SetTheme(theme string) (string, error) {
-	theme = strings.TrimSpace(theme)
-	if theme == "" {
-		return "", errors.New("theme name is required")
-	}
-
-	cfg, err := Load()
-	if err != nil {
-		return "", err
-	}
-	cfg.Theme = theme
-
-	if err := Save(cfg); err != nil {
-		return "", err
-	}
-
-	return theme, nil
-}
-
 func hasVisibleYAML(matches []string) bool {
 	for _, match := range matches {
 		base := filepath.Base(match)
@@ -303,23 +256,17 @@ func hasVisibleYAML(matches []string) bool {
 func renderConfig(cfg File) string {
 	cfg.NotesDir = strings.TrimSpace(cfg.NotesDir)
 	cfg.NotesRepo = strings.TrimSpace(cfg.NotesRepo)
-	cfg.Theme = strings.TrimSpace(cfg.Theme)
 	cfg.Layout = normalizeLayout(cfg.Layout)
-	if cfg.Theme == "" {
-		cfg.Theme = DefaultFile().Theme
-	}
 	if cfg.PickerHeight < 6 {
 		cfg.PickerHeight = DefaultFile().PickerHeight
 	}
 	lines := []string{
 		"# f / aoo — SSH host picker",
-		"# hosts are stored in ~/.config/aoo/config.d/*.yaml",
-		"# themes: auto, sshelf, fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
+		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/*.conf",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
 		"# show_list_on_start: render results when query is empty",
 		"# two_line_results: host on first line, ssh command on second line",
-		"theme: " + yamlScalar(cfg.Theme),
 		"layout: " + yamlScalar(cfg.Layout),
 		"full_screen: " + yamlScalarBool(cfg.FullScreen),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),
@@ -341,6 +288,7 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 		"show_notes_on_start:",
 		"notes_dir:",
 		"notes_repo:",
+		"theme:",
 		"# search_mode:",
 	}
 	for _, marker := range legacyMarkers {

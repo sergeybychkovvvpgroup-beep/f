@@ -126,21 +126,17 @@ ssh \
   root@192.168.11.10
 ```
 
-## Custom host YAML
+## Host storage and sync
 
-Custom added hosts still use YAML files under:
-
-```text
-~/.config/aoo/config.d/*.yaml
-```
-
-Legacy path read for compatibility:
+New custom hosts are written back to ordinary OpenSSH config blocks in:
 
 ```text
-~/.config/aoo/hosts.yaml
+~/.ssh/config.d/aoo.conf
 ```
 
-This YAML storage is for custom additions only. It should not become the source of truth for imported OpenSSH entries.
+Legacy YAML files under `~/.config/aoo/config.d/*.yaml` and `~/.config/aoo/hosts.yaml` may still be read for compatibility, but they are not the write path for new additions.
+
+If `~/.ssh/config.d` is a git repository, host sync should behave like nb notes: pull before reading/writing where practical, then commit and push after host edits.
 
 ## Build, test, install
 

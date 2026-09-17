@@ -397,13 +397,8 @@ func (m PickerModel) maxVisibleItems() int {
 	return maxItems
 }
 
-func RunPicker(entries []notes.Entry, initialQuery string, themeName string, options Options) (*notes.Entry, int, string, bool, bool, bool, string, error) {
-	theme, err := ResolveTheme(themeName)
-	if err != nil {
-		return nil, 0, initialQuery, false, false, false, "", err
-	}
-
-	model := NewPicker(entries, initialQuery, theme, options)
+func RunPicker(entries []notes.Entry, initialQuery string, options Options) (*notes.Entry, int, string, bool, bool, bool, string, error) {
+	model := NewPicker(entries, initialQuery, DefaultTheme(), options)
 	programOptions := []tea.ProgramOption{}
 	if options.FullScreen {
 		programOptions = append(programOptions, tea.WithAltScreen())

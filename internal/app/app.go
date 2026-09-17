@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"aoo/internal/config"
 	"aoo/internal/hosts"
@@ -29,10 +30,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return runList(stdout)
 		case "config":
 			return runConfig(args[1:], stdout, stderr)
-		case "themes":
-			return runThemes(stdout)
-		case "set-theme":
-			return runSetTheme(args[1:], stdout, stderr)
+		case "setup":
+			return runSetup(args[1:], stdout, stderr)
 		case "upgrade":
 			return runUpgrade(args[1:], stdout, stderr)
 		case "version", "--version", "-v":
@@ -50,7 +49,6 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("f", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	query := fs.String("query", "", "initial search query")
-	themeFlag := fs.String("theme", "", "theme name")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -59,10 +57,6 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 	}
 
 	cfg, err := config.Load()
-	if err != nil {
-		return err
-	}
-	themeName, _, err := config.ResolveTheme(*themeFlag)
 	if err != nil {
 		return err
 	}
@@ -86,7 +80,7 @@ func runInteractive(args []string, stdout, stderr io.Writer) error {
 		options.Height = 0
 	}
 
-	selected, _, nextQuery, cancelled, editRequested, printOnly, createKind, err := ui.RunPicker(hosts.ToEntries(list), *query, themeName, options)
+	selected, _, nextQuery, cancelled, editRequested, printOnly, createKind, err := ui.RunPicker(hosts.ToEntries(list), *query, options)
 	if err != nil || cancelled {
 		return err
 	}
@@ -170,6 +164,7 @@ func editSSHConfigEntry(entry notes.Entry, stdout, stderr io.Writer) error {
 	if err := upsertMarkedBlock(path, alias, strings.TrimRight(string(edited), "\n")+"\n"); err != nil {
 		return err
 	}
+	pushHostsConfig(stderr)
 	fmt.Fprintf(stdout, "saved SSH override: %s\nfile: %s\n", alias, path)
 	return nil
 }
@@ -272,11 +267,19 @@ func attrsList(attrs map[string]string, key string) []string {
 }
 
 func userSSHConfigPath() (string, error) {
+	dir, err := sshConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "aoo.conf"), nil
+}
+
+func sshConfigDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ssh", "config.d", "aoo.conf"), nil
+	return filepath.Join(home, ".ssh", "config.d"), nil
 }
 
 func upsertMarkedBlock(path, alias, block string) error {
@@ -382,12 +385,12 @@ func runAdd(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		}
 	}
 
-	saved, err := hosts.Add(h)
+	syncHostsConfig(stderr)
+	saved, path, err := saveHostToSSHConfig(h)
 	if err != nil {
 		return err
 	}
 	pushHostsConfig(stderr)
-	path, _ := hosts.Path()
 	fmt.Fprintf(stdout, "saved: %s -> %s\nfile: %s\n", saved.Name, saved.Command(), path)
 	return nil
 }
@@ -397,14 +400,52 @@ func promptAndSaveHost(initialName string, stdout, stderr io.Writer) (hosts.Host
 	if err != nil {
 		return hosts.Host{}, err
 	}
-	saved, err := hosts.Add(h)
+	syncHostsConfig(stderr)
+	saved, path, err := saveHostToSSHConfig(h)
 	if err != nil {
 		return hosts.Host{}, err
 	}
 	pushHostsConfig(stderr)
-	path, _ := hosts.Path()
 	fmt.Fprintf(stdout, "saved: %s -> %s\nfile: %s\n", saved.Name, saved.Command(), path)
 	return saved, nil
+}
+
+func saveHostToSSHConfig(h hosts.Host) (hosts.Host, string, error) {
+	h.Name = strings.TrimSpace(h.Name)
+	h.Host = strings.TrimSpace(h.Host)
+	if h.Name == "" {
+		return hosts.Host{}, "", errors.New("name is required")
+	}
+	if h.Host == "" {
+		return hosts.Host{}, "", errors.New("host is required")
+	}
+	if user, host, ok := strings.Cut(h.Host, "@"); ok {
+		if strings.TrimSpace(h.User) == "" {
+			h.User = strings.TrimSpace(user)
+		}
+		h.Host = strings.TrimSpace(host)
+	}
+	path, err := userSSHConfigPath()
+	if err != nil {
+		return hosts.Host{}, "", err
+	}
+	lines := []string{"Host " + h.Name, "  HostName " + h.Host}
+	if strings.TrimSpace(h.User) != "" {
+		lines = append(lines, "  User "+strings.TrimSpace(h.User))
+	}
+	if h.Port > 0 {
+		lines = append(lines, "  Port "+strconv.Itoa(h.Port))
+	}
+	if strings.TrimSpace(h.Desc) != "" {
+		lines = append(lines, "  # Desc "+strings.TrimSpace(h.Desc))
+	}
+	if strings.TrimSpace(h.Args) != "" {
+		lines = append(lines, "  # Extra ssh args were requested but OpenSSH config cannot store them verbatim: "+strings.TrimSpace(h.Args))
+	}
+	if err := upsertMarkedBlock(path, h.Name, strings.Join(lines, "\n")+"\n"); err != nil {
+		return hosts.Host{}, "", err
+	}
+	return h, path, nil
 }
 
 func promptHost(stdin io.Reader, stdout io.Writer, h hosts.Host) (hosts.Host, error) {
@@ -468,9 +509,9 @@ func (m *multiFlag) Set(v string) error {
 func runConfig(args []string, stdout, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "show" {
 		cfgPath, _ := config.ConfigPath()
-		hostsPath, _ := hosts.Path()
-		hostsDir, _ := hosts.ConfigDir()
-		fmt.Fprintf(stdout, "config file: %s\nhosts dir: %s\ndefault hosts file: %s\n", cfgPath, hostsDir, hostsPath)
+		sshDir, _ := sshConfigDir()
+		sshPath, _ := userSSHConfigPath()
+		fmt.Fprintf(stdout, "config file: %s\nssh hosts dir: %s\ndefault edit file: %s\n", cfgPath, sshDir, sshPath)
 		return nil
 	}
 	if len(args) > 0 && args[0] == "sync" {
@@ -485,10 +526,137 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 	return errors.New("usage: f config show|sync")
 }
 
-func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
-	dir, err := hosts.ConfigDir()
+func runSetup(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	force := fs.Bool("force", false, "replace existing non-git ~/.ssh/config.d after backup")
+	adopt := fs.Bool("adopt", false, "turn current ~/.ssh/config.d into the hosts git repo and push it")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: f setup REPO_URL")
+	}
+	repoURL := strings.TrimSpace(fs.Arg(0))
+	if repoURL == "" {
+		return errors.New("repo URL is required")
+	}
+	dir, err := sshConfigDir()
 	if err != nil {
-		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no config.d"}
+		return err
+	}
+	if err := ensureSSHConfigInclude(); err != nil {
+		return err
+	}
+	if root, ok := gitRoot(dir); ok {
+		if err := runUpgradeGit(root, stdout, stderr, "remote", "set-url", "origin", repoURL); err != nil {
+			return err
+		}
+		if err := runUpgradeGit(root, stdout, stderr, "pull", "--rebase", "--autostash"); err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "synced hosts repo: %s\n", dir)
+		return nil
+	}
+	if nonEmptyDir(dir) {
+		if *adopt {
+			if err := adoptHostsRepo(dir, repoURL, stdout, stderr); err != nil {
+				return err
+			}
+			fmt.Fprintf(stdout, "adopted current SSH config.d as hosts repo: %s\n", dir)
+			return nil
+		}
+		if !*force {
+			return fmt.Errorf("%s is not empty; use 'f setup --adopt %s' to push current hosts or 'f setup --force %s' to replace from repo", dir, repoURL, repoURL)
+		}
+		backup := fmt.Sprintf("%s.backup.%s", dir, timestamp())
+		if err := os.Rename(dir, backup); err != nil {
+			return fmt.Errorf("backup existing config.d: %w", err)
+		}
+		fmt.Fprintf(stdout, "backed up existing SSH config.d: %s\n", backup)
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
+		return err
+	}
+	cmd := exec.Command("git", "clone", repoURL, dir)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone hosts repo: %w", err)
+	}
+	_ = os.Chmod(dir, 0o700)
+	fmt.Fprintf(stdout, "installed hosts repo: %s\n", dir)
+	return nil
+}
+
+func adoptHostsRepo(dir, repoURL string, stdout, stderr io.Writer) error {
+	_ = os.Chmod(dir, 0o700)
+	if err := runUpgradeGit(dir, stdout, stderr, "init"); err != nil {
+		return err
+	}
+	if strings.TrimSpace(upgradeGitOutput(dir, "remote")) == "" {
+		if err := runUpgradeGit(dir, stdout, stderr, "remote", "add", "origin", repoURL); err != nil {
+			return err
+		}
+	} else if err := runUpgradeGit(dir, stdout, stderr, "remote", "set-url", "origin", repoURL); err != nil {
+		return err
+	}
+	if err := runUpgradeGit(dir, stdout, stderr, "add", "."); err != nil {
+		return err
+	}
+	if strings.TrimSpace(gitOutput(dir, "status", "--porcelain")) != "" {
+		if err := ensureGitIdentity(dir); err != nil {
+			return err
+		}
+		if err := runUpgradeGit(dir, stdout, stderr, "commit", "-m", "Adopt aoo SSH hosts"); err != nil {
+			return err
+		}
+	}
+	branch := strings.TrimSpace(upgradeGitOutput(dir, "branch", "--show-current"))
+	if branch == "" {
+		branch = "master"
+	}
+	return runUpgradeGit(dir, stdout, stderr, "push", "-u", "origin", branch)
+}
+
+func ensureSSHConfigInclude() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		return err
+	}
+	path := filepath.Join(sshDir, "config")
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	text := string(raw)
+	if strings.Contains(text, "Include ~/.ssh/config.d/*.conf") || strings.Contains(text, "Include "+filepath.Join(home, ".ssh", "config.d", "*.conf")) {
+		return nil
+	}
+	if strings.TrimSpace(text) != "" && !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	text = "Include ~/.ssh/config.d/*.conf\n" + text
+	return os.WriteFile(path, []byte(text), 0o600)
+}
+
+func nonEmptyDir(path string) bool {
+	entries, err := os.ReadDir(path)
+	return err == nil && len(entries) > 0
+}
+
+func timestamp() string {
+	return time.Now().Format("20060102150405")
+}
+
+func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
+	dir, err := sshConfigDir()
+	if err != nil {
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no ssh config.d"}
 	}
 	root, ok := gitRoot(dir)
 	if !ok {
@@ -502,9 +670,9 @@ func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
 }
 
 func pushHostsConfig(stderr io.Writer) ui.SyncStatus {
-	dir, err := hosts.ConfigDir()
+	dir, err := sshConfigDir()
 	if err != nil {
-		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no config.d"}
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no ssh config.d"}
 	}
 	root, ok := gitRoot(dir)
 	if !ok {
@@ -513,6 +681,10 @@ func pushHostsConfig(stderr io.Writer) ui.SyncStatus {
 	_ = runQuietGit(root, "add", ".")
 	status := strings.TrimSpace(gitOutput(root, "status", "--porcelain"))
 	if status != "" {
+		if err := ensureGitIdentity(root); err != nil {
+			fmt.Fprintf(stderr, "[sync] git identity setup failed in %s: %v\n", root, err)
+			return ui.SyncStatus{State: ui.SyncStateWarn, Message: "identity failed"}
+		}
 		if err := runQuietGit(root, "commit", "-m", "Update aoo hosts"); err != nil {
 			fmt.Fprintf(stderr, "[sync] git commit failed in %s: %v\n", root, err)
 			return ui.SyncStatus{State: ui.SyncStateWarn, Message: "commit failed"}
@@ -542,6 +714,20 @@ func gitRoot(dir string) (string, bool) {
 	return root, true
 }
 
+func ensureGitIdentity(dir string) error {
+	if strings.TrimSpace(gitOutput(dir, "config", "user.name")) == "" {
+		if err := runQuietGit(dir, "config", "user.name", "aoo"); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(gitOutput(dir, "config", "user.email")) == "" {
+		if err := runQuietGit(dir, "config", "user.email", "aoo@local"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func runQuietGit(dir string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
@@ -561,33 +747,6 @@ func gitOutput(dir string, args ...string) string {
 	return out.String()
 }
 
-func runSetTheme(args []string, stdout, stderr io.Writer) error {
-	fs := flag.NewFlagSet("set-theme", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: f set-theme THEME")
-	}
-	if _, err := ui.ResolveTheme(fs.Arg(0)); err != nil {
-		return err
-	}
-	saved, err := config.SetTheme(fs.Arg(0))
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(stdout, "configured theme: %s\n", saved)
-	return nil
-}
-
-func runThemes(stdout io.Writer) error {
-	for _, name := range ui.ThemeNames() {
-		fmt.Fprintln(stdout, name)
-	}
-	return nil
-}
-
 func printUsage(w io.Writer) {
 	name := cliName()
 	fmt.Fprintf(w, `%s — quick SSH host picker
@@ -599,13 +758,15 @@ Usage:
   %s add NAME HOST      also works for scripted adding
   %s list               print saved/imported hosts
   %s config show        show config/hosts paths
+  %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d
+  %s setup --adopt REPO adopt current ~/.ssh/config.d as hosts repo
 
 Add options:
   -user USER  -p PORT  --tag TAG  --desc TEXT  --args "-A -J jump"
 
-Hosts are kept in one file: ~/.config/aoo/hosts.yaml
-Aliases from ~/.ssh/config are also shown automatically.
-`, name, name, name, name, name, name)
+Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d.
+Aliases from ~/.ssh/config are shown automatically.
+`, name, name, name, name, name, name, name, name)
 }
 
 func cliName() string {

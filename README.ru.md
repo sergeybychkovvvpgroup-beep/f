@@ -6,6 +6,22 @@
 
 Текущий UX ориентирован на `sshelf`: сверху строка поиска, слева компактный список, справа подробности выбранной записи.
 
+## Установка на новую машину
+
+Одна команда ставит `f` и legacy-symlink `aoo`:
+
+```bash
+curl -fsSL https://git.dawq.me/sergeyb/aoo/raw/branch/main/install.sh | sh
+```
+
+Затем подключи репозиторий с хостами:
+
+```bash
+f setup <ssh-config-repo-url>
+```
+
+`f setup` клонирует repo в `~/.ssh/config.d`, добавляет в `~/.ssh/config` строку `Include ~/.ssh/config.d/*.conf`, и машина готова к работе. Чтобы один раз опубликовать текущий список хостов этой машины как начальное содержимое repo, используй `f setup --adopt <ssh-config-repo-url>`.
+
 ## Быстрый старт
 
 ```bash
@@ -13,6 +29,7 @@ f             # открыть picker
 f prod db     # открыть picker с начальным запросом
 f list        # вывести известные записи
 f config show # показать пути конфигов
+f config sync # подтянуть изменения хостов
 ```
 
 В picker:
@@ -90,7 +107,7 @@ Host alias-name
 # aoo-edit end alias-name
 ```
 
-Generated/imported source files не переписываются. Пользовательские правки должны жить в обычном активном `aoo.conf`.
+Generated/imported source files не переписываются. Пользовательские правки должны жить в обычном активном `aoo.conf`. Если `~/.ssh/config.d` является git-репозиторием, aoo делает pull при запуске и commit/push после редактирования через `e` или `f add`, то есть синк хостов работает в обе стороны по модели nb notes.
 
 ## Правила отображения
 
@@ -134,24 +151,9 @@ f add db 10.20.30.40 -user admin -p 2222 --args "-A -J jump"
 
 `Ctrl+N` в picker запускает интерактивное добавление.
 
-Custom hosts хранятся тут:
+Новые записи сохраняются как marked OpenSSH blocks в `~/.ssh/config.d/aoo.conf`. Legacy YAML hosts из `~/.config/aoo/` пока читаются для совместимости, но новые хосты должны жить в SSH config repo.
 
-```text
-~/.config/aoo/config.d/*.yaml
-```
-
-Legacy `~/.config/aoo/hosts.yaml` пока читается для совместимости.
-
-## Темы
-
-Default theme для новых конфигов — `sshelf`.
-
-```bash
-f themes
-f set-theme sshelf
-```
-
-## Сборка и установка
+## Сборка и установка из исходников
 
 ```bash
 go test ./...
