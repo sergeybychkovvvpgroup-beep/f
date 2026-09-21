@@ -1,8 +1,8 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO_URL="${AOO_REPO_URL:-https://git.dawq.me/sergeyb/aoo.git}"
-RAW_BASE="${AOO_RAW_BASE:-https://git.dawq.me/sergeyb/aoo/raw/branch/main}"
+REPO_URL="${AOO_REPO_URL:-https://github.com/sergeybychkovvvpgroup-beep/f.git}"
+RAW_BASE="${AOO_RAW_BASE:-https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main}"
 BIN_DIR="${AOO_BIN_DIR:-$HOME/.local/bin}"
 CACHE_DIR="${AOO_CACHE_DIR:-$HOME/.cache/aoo/source}"
 BIN="$BIN_DIR/f"
@@ -50,7 +50,7 @@ else
   git clone --depth 1 "$REPO_URL" "$CACHE_DIR"
 fi
 
-(cd "$CACHE_DIR" && go build -buildvcs=false -o "$BIN" ./cmd/f)
+(cd "$CACHE_DIR" && commit="$(git rev-parse HEAD)" && go build -buildvcs=false -ldflags "-X aoo/internal/app.buildCommit=$commit" -o "$BIN" ./cmd/f)
 ln -sf f "$BIN_DIR/aoo"
 
 echo "installed: $BIN"

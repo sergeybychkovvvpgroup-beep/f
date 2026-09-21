@@ -19,7 +19,10 @@ import (
 	"aoo/internal/ui"
 )
 
-const version = "0.2.0"
+var (
+	version     = "0.4.0"
+	buildCommit = "unknown"
+)
 
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) > 0 {
@@ -42,10 +45,16 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 			return nil
 		}
 	}
-	return runInteractive(args, stdout, stderr)
+	return runInteractive(args, stdin, stdout, stderr)
 }
 
-func runInteractive(args []string, stdout, stderr io.Writer) error {
+func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
+	if stdin == os.Stdin && strings.TrimSpace(os.Getenv("AOO_NO_UPDATE_CHECK")) == "" {
+		if updateErr := maybeOfferUpgrade(stdin, stdout, stderr); updateErr != nil {
+			fmt.Fprintf(stderr, "[f] update check: %v\n", updateErr)
+		}
+	}
+
 	fs := flag.NewFlagSet("f", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	query := fs.String("query", "", "initial search query")
@@ -851,12 +860,37 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 	if err := ensureUpgradeCheckout(dir, *repoURL, stdout, stderr); err != nil {
 		return err
 	}
-	cmd := exec.Command("go", "build", "-buildvcs=false", "-o", target, "./cmd/f")
+	commit := strings.TrimSpace(upgradeGitOutput(dir, "rev-parse", "HEAD"))
+	if commit == "" {
+		return errors.New("cannot determine upgrade commit")
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".f-upgrade-*")
+	if err != nil {
+		return fmt.Errorf("prepare upgrade target: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	defer os.Remove(tmpPath)
+
+	ldflags := "-X aoo/internal/app.buildCommit=" + commit
+	cmd := exec.Command("go", "build", "-buildvcs=false", "-ldflags", ldflags, "-o", tmpPath, "./cmd/f")
 	cmd.Dir = dir
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("go build upgrade: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return fmt.Errorf("chmod upgraded binary: %w", err)
+	}
+	if err := os.Rename(tmpPath, target); err != nil {
+		return fmt.Errorf("install upgraded binary: %w", err)
 	}
 	fmt.Fprintf(stdout, "[upgrade] done: %s\n", target)
 	return nil
@@ -866,7 +900,7 @@ func defaultUpgradeRepo() string {
 	if value := strings.TrimSpace(os.Getenv("AOO_UPGRADE_REPO")); value != "" {
 		return value
 	}
-	return "https://git.dawq.me/sergeyb/aoo.git"
+	return "https://github.com/sergeybychkovvvpgroup-beep/f.git"
 }
 
 func safeRepoURL(repoURL string) string {

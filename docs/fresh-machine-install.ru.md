@@ -23,7 +23,7 @@ Include ~/.ssh/config.d/aoo_hosts/*.conf
 ## Установка на новой машине
 
 ```bash
-curl -fsSL https://git.dawq.me/sergeyb/aoo/raw/branch/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
 ```
 
 Если `~/.local/bin` ещё не в `PATH`, добавь его в shell config:
@@ -114,7 +114,7 @@ f upgrade
 или повторно:
 
 ```bash
-curl -fsSL https://git.dawq.me/sergeyb/aoo/raw/branch/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
 ```
 
 ## Быстрая диагностика

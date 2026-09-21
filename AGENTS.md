@@ -160,7 +160,7 @@ ssh sergeyb@192.168.41.138 'sh -lc '\''install -m 0755 /tmp/f.new ~/.local/bin/f
 
 ## Git workflow
 
-Repo: `https://git.dawq.me/sergeyb/aoo.git`
+Public update/source repo: `https://github.com/sergeybychkovvvpgroup-beep/f.git`
 
 The user may provide a Gitea token. Do not print tokens in final answers. Use `http.extraHeader` when needed and avoid persisting secrets in git config.
 

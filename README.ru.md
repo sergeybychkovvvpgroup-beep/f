@@ -11,7 +11,7 @@
 Одна команда ставит `f` и legacy-symlink `aoo`:
 
 ```bash
-curl -fsSL https://git.dawq.me/sergeyb/aoo/raw/branch/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
 ```
 
 Затем подключи репозиторий с хостами:

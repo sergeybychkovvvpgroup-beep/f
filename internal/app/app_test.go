@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -42,5 +43,19 @@ func TestRunHeaderKeepsDistinctActionDescription(t *testing.T) {
 
 	if got := runHeader(entry, action); got != "Vyos-DHCP Chashnikovo :: показать subnets" {
 		t.Fatalf("unexpected run header: %q", got)
+	}
+}
+
+func TestVersionReportsCurrentRelease(t *testing.T) {
+	oldArg0 := os.Args[0]
+	os.Args[0] = "f"
+	t.Cleanup(func() { os.Args[0] = oldArg0 })
+
+	var stdout, stderr bytes.Buffer
+	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.4.0" {
+		t.Fatalf("version = %q, want %q", got, "f 0.4.0")
 	}
 }

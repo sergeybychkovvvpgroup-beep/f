@@ -11,7 +11,7 @@ Current UX direction is inspired by `sshelf`: top search box, compact list on th
 One command installs `f` and the legacy `aoo` symlink:
 
 ```bash
-curl -fsSL https://git.dawq.me/sergeyb/aoo/raw/branch/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
 ```
 
 Then attach your hosts repository:
@@ -31,6 +31,8 @@ f list        # print known entries
 f config show # show config paths
 f config sync # pull latest host changes
 ```
+
+When `f` starts interactively, it checks for a newer repository commit at most once every 15 minutes. If an update exists, press Enter at the prompt to build and atomically install it; the new binary is used on the next launch. `f upgrade` performs the same update manually. Both paths require `git`, Go, and repository access. Set `AOO_NO_UPDATE_CHECK=1` to disable startup checks.
 
 In the picker:
 
