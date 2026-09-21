@@ -1,0 +1,16 @@
+- desc: f rebuild and install
+  text: 'cd /path/to/f
+
+    make update
+
+    '
+- desc: f git add commit push
+  text: 'cd /path/to/f
+
+    git add .
+
+    git commit -m "update f"
+
+    git push
+
+    '

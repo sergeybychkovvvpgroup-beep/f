@@ -1,7 +1,6 @@
 - desc: f help
   text: |-
     f = terminal notes + command launcher.
-    Old name: aoo.
 
     Start:
       f
@@ -22,7 +21,7 @@
       inspect: f config show
 
     Validate notes:
-      f validate --dir ~/.local/share/aoo/notes
+      f validate --dir ~/.local/share/f/notes
 
     Upgrade utility:
       f upgrade

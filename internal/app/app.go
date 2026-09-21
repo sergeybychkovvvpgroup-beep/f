@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,13 +20,19 @@ import (
 	"aoo/internal/ui"
 )
 
-const version = "0.1.0"
+const version = "0.3.0"
 
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	if len(args) > 0 {
 		switch args[0] {
 		case "validate":
 			return runValidate(args[1:], stdout, stderr)
+		case "duplicates":
+			return runDuplicates(args[1:], stdout, stderr)
+		case "doctor":
+			return runDoctor(args[1:], stdout, stderr)
+		case "migrate":
+			return runMigrate(stdout)
 		case "themes":
 			return runThemes(stdout)
 		case "config":
@@ -53,20 +60,21 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) (err error) {
-	fs := flag.NewFlagSet("aoo", flag.ContinueOnError)
+	fs := flag.NewFlagSet("f", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 
 	dir := fs.String("dir", "", "directory with YAML notes")
 	query := fs.String("query", "", "initial search query")
 	themeFlag := fs.String("theme", "", "theme name")
 	strict := fs.Bool("strict", false, "fail when any note file has validation errors")
+	yes := fs.Bool("yes", false, "run commands without confirmation")
 
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 
 	if message, ok := repoUpdateHint(); ok {
-		fmt.Fprintf(stdout, "[aoo] %s\n", message)
+		fmt.Fprintf(stdout, "[f] %s\n", message)
 	}
 
 	cfg, err := config.Load()
@@ -154,7 +162,7 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) (e
 				printActionText(*selected, action, stdout)
 				return nil
 			case action.IsCmd():
-				return runCommand(*selected, action, stdin, stdout, stderr)
+				return runCommand(*selected, action, stdin, stdout, stderr, cfg.ConfirmRun && !*yes)
 			}
 		}
 
@@ -178,7 +186,7 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) (e
 			printActionText(*selected, action.Action, stdout)
 			return nil
 		case ui.ActionRun:
-			return runCommand(*selected, action.Action, stdin, stdout, stderr)
+			return runCommand(*selected, action.Action, stdin, stdout, stderr, cfg.ConfirmRun && !*yes)
 		default:
 			return fmt.Errorf("unknown action: %s", action.Kind)
 		}
@@ -235,6 +243,10 @@ func runValidate(args []string, stdout, stderr io.Writer) error {
 	}
 
 	result := notes.LoadDir(root)
+	duplicates := notes.AnalyzeDuplicates(result.Entries)
+	for _, duplicate := range duplicates {
+		fmt.Fprintf(stderr, "WARNING: duplicate %s %q at %s\n", duplicate.Kind, duplicate.Value, formatLocations(duplicate.Locations))
+	}
 	if len(result.Errors) == 0 {
 		_, err = fmt.Fprintf(stdout, "OK: %d entries loaded from %s\n", len(result.Entries), root)
 		return err
@@ -246,11 +258,72 @@ func runValidate(args []string, stdout, stderr io.Writer) error {
 	return fmt.Errorf("validation failed: %d file(s) with errors", len(result.Errors))
 }
 
+type duplicateFindingsError struct{ count int }
+
+func (e duplicateFindingsError) Error() string { return fmt.Sprintf("duplicate findings: %d", e.count) }
+func IsDuplicateFindings(err error) bool {
+	var target duplicateFindingsError
+	return errors.As(err, &target)
+}
+
+func runDuplicates(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("duplicates", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", "", "directory with YAML notes")
+	jsonOutput := fs.Bool("json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	root, _, err := config.ResolveNotesDir(*dir)
+	if err != nil {
+		return err
+	}
+	result := notes.LoadDir(root)
+	if len(result.Errors) > 0 {
+		for _, loadErr := range result.Errors {
+			fmt.Fprintf(stderr, "ERROR: %v\n", loadErr)
+		}
+		return fmt.Errorf("validation failed: %d file(s) with errors", len(result.Errors))
+	}
+	duplicates := notes.AnalyzeDuplicates(result.Entries)
+	if duplicates == nil {
+		duplicates = []notes.Duplicate{}
+	}
+	if *jsonOutput {
+		encoder := json.NewEncoder(stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(duplicates); err != nil {
+			return err
+		}
+	} else if len(duplicates) == 0 {
+		fmt.Fprintln(stdout, "No duplicates found.")
+	} else {
+		for _, duplicate := range duplicates {
+			fmt.Fprintf(stdout, "%s: %q\n", duplicate.Kind, duplicate.Value)
+			for _, location := range duplicate.Locations {
+				fmt.Fprintf(stdout, "  %s:%d\n", location.Path, location.Line)
+			}
+		}
+	}
+	if len(duplicates) > 0 {
+		return duplicateFindingsError{count: len(duplicates)}
+	}
+	return nil
+}
+
+func formatLocations(locations []notes.Location) string {
+	parts := make([]string, 0, len(locations))
+	for _, location := range locations {
+		parts = append(parts, fmt.Sprintf("%s:%d", location.Path, location.Line))
+	}
+	return strings.Join(parts, ", ")
+}
+
 func loadBundledNotes() notes.LoadResult {
 	return bundled.Load()
 }
 
-func runCommand(entry notes.Entry, action *notes.Action, stdin io.Reader, stdout, stderr io.Writer) error {
+func runCommand(entry notes.Entry, action *notes.Action, stdin io.Reader, stdout, stderr io.Writer, confirm bool) error {
 	if action == nil || !action.IsCmd() {
 		return errors.New("selected action is not a command action")
 	}
@@ -258,8 +331,12 @@ func runCommand(entry notes.Entry, action *notes.Action, stdin io.Reader, stdout
 	banner := strings.TrimSpace(action.Banner)
 	desc := runHeader(entry, action)
 
-	if err := promptCommandRun(desc, command, stdout); err != nil {
-		return err
+	if confirm && !promptCommandRun(desc, command, stdin, stdout) {
+		fmt.Fprintln(stdout, "cancelled")
+		return nil
+	}
+	if !confirm {
+		fmt.Fprintf(stdout, "[run] %s\n\n[command]\n%s\n", desc, command)
 	}
 
 	if banner := strings.TrimSpace(banner); banner != "" {
@@ -285,9 +362,25 @@ func runHeader(entry notes.Entry, action *notes.Action) string {
 	return fmt.Sprintf("%s :: %s", base, suffix)
 }
 
-func promptCommandRun(desc, command string, stdout io.Writer) error {
+func promptCommandRun(desc, command string, stdin io.Reader, stdout io.Writer) bool {
 	fmt.Fprintf(stdout, "[run] %s\n", desc)
 	fmt.Fprintf(stdout, "\n[command]\n%s\n", command)
+	fmt.Fprint(stdout, "Run command? [y/N] ")
+	var answer string
+	if _, err := fmt.Fscanln(stdin, &answer); err != nil {
+		return false
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes"
+}
+
+func runMigrate(stdout io.Writer) error {
+	path, err := config.MigrateLegacy()
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(stdout, "migrated config to %s\n", path)
+	fmt.Fprintln(stdout, "notes were not moved; update notes_dir explicitly if you want to relocate them to ~/.local/share/f/notes")
 	return nil
 }
 
@@ -323,7 +416,7 @@ func runSetFolder(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if fs.NArg() != 1 {
-		return errors.New("usage: aoo set-folder /path/to/notes")
+		return errors.New("usage: f set-folder /path/to/notes")
 	}
 
 	path, err := config.SetNotesDir(fs.Arg(0))
@@ -365,6 +458,8 @@ func runConfigShow(stdout io.Writer) error {
 	if themeErr != nil {
 		return themeErr
 	}
+	fmt.Fprintf(stdout, "schema_version: %d\n", cfg.SchemaVersion)
+	fmt.Fprintf(stdout, "confirm_run: %t\n", cfg.ConfirmRun)
 	fmt.Fprintf(stdout, "config file: %s\n", configPath)
 	fmt.Fprintf(stdout, "notes_dir: %s\n", emptyIfUnset(cfg.NotesDir))
 	fmt.Fprintf(stdout, "notes_repo: %s\n", emptyIfUnset(cfg.NotesRepo))
@@ -391,7 +486,7 @@ func runSetTheme(args []string, stdout, stderr io.Writer) error {
 	}
 
 	if fs.NArg() != 1 {
-		return errors.New("usage: aoo set-theme THEME")
+		return errors.New("usage: f set-theme THEME")
 	}
 
 	themeName := fs.Arg(0)
@@ -452,13 +547,13 @@ func openEntryInEditor(entry notes.Entry, line int, stdout, stderr io.Writer) er
 		if targetLine <= 0 {
 			targetLine = entry.SourceLine
 		}
-		return openPathInEditor(path, targetLine, fmt.Sprintf("aoo: update %s", filepath.Base(path)), stdout, stderr)
+		return openPathInEditor(path, targetLine, fmt.Sprintf("f: update %s", filepath.Base(path)), stdout, stderr)
 	}
 	targetLine := line
 	if targetLine <= 0 {
 		targetLine = entry.SourceLine
 	}
-	return openPathInEditor(entry.SourcePath, targetLine, fmt.Sprintf("aoo: update %s", filepath.Base(entry.SourcePath)), stdout, stderr)
+	return openPathInEditor(entry.SourcePath, targetLine, fmt.Sprintf("f: update %s", filepath.Base(entry.SourcePath)), stdout, stderr)
 }
 
 func openConfigInEditor(stdout, stderr io.Writer) error {
@@ -555,7 +650,7 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		dir = filepath.Join(cacheDir, "aoo", "source")
+		dir = filepath.Join(cacheDir, "f", "source")
 	}
 
 	fmt.Fprintf(stdout, "[upgrade] repo: %s\n", safeRepoURL(*repoURL))
@@ -579,10 +674,10 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 }
 
 func defaultUpgradeRepo() string {
-	if value := strings.TrimSpace(os.Getenv("AOO_UPGRADE_REPO")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("F_UPGRADE_REPO")); value != "" {
 		return value
 	}
-	return "https://git.dawq.me/sergeyb/aoo.git"
+	return "https://github.com/sergeybychkovvvpgroup-beep/f.git"
 }
 
 func safeRepoURL(repoURL string) string {
@@ -649,11 +744,7 @@ func upgradeGitOutput(dir string, args ...string) string {
 }
 
 func cliName() string {
-	name := strings.TrimSpace(filepath.Base(os.Args[0]))
-	if name == "" {
-		return "f"
-	}
-	return name
+	return "f"
 }
 
 func renderBanner(title, message string) string {
@@ -684,12 +775,15 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Terminal notes and command launcher.")
 	fmt.Fprintln(w, "")
-	fmt.Fprintf(w, "Run `%s` and search for `aoo-help`.\n", name)
+	fmt.Fprintf(w, "Run `%s` and search for `f-help`.\n", name)
 	fmt.Fprintln(w, "Built-in setup/help notes are available on a clean host.")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Extra commands:")
 	fmt.Fprintf(w, "  %s version\n", name)
 	fmt.Fprintf(w, "  %s validate --dir PATH\n", name)
+	fmt.Fprintf(w, "  %s duplicates --dir PATH [--json]\n", name)
+	fmt.Fprintf(w, "  %s doctor\n", name)
+	fmt.Fprintf(w, "  %s migrate\n", name)
 	fmt.Fprintf(w, "  %s add [title]\n", name)
 	fmt.Fprintf(w, "  %s add cmd [title]\n", name)
 	fmt.Fprintf(w, "  %s set-source\n", name)
@@ -698,10 +792,10 @@ func printUsage(w io.Writer) {
 
 func printConfigUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  aoo config")
-	fmt.Fprintln(w, "  aoo config show")
-	fmt.Fprintln(w, "  aoo config set-folder PATH")
-	fmt.Fprintln(w, "  aoo config set-theme THEME")
+	fmt.Fprintln(w, "  f config")
+	fmt.Fprintln(w, "  f config show")
+	fmt.Fprintln(w, "  f config set-folder PATH")
+	fmt.Fprintln(w, "  f config set-theme THEME")
 }
 
 func emptyIfUnset(value string) string {
@@ -779,7 +873,7 @@ func repoUpdateHint() (string, bool) {
 		return "", false
 	}
 
-	repoRoot, ok := detectAooRepoRoot(cwd)
+	repoRoot, ok := detectFRepoRoot(cwd)
 	if !ok {
 		return "", false
 	}
@@ -813,14 +907,14 @@ func repoUpdateHint() (string, bool) {
 			continue
 		}
 		if info.ModTime().After(exeInfo.ModTime()) {
-			return fmt.Sprintf("repo is newer than installed binary; run `sudo make update` or `./bin/aoo` from %s", repoRoot), true
+			return fmt.Sprintf("repo is newer than installed binary; run `sudo make update` or `./bin/f` from %s", repoRoot), true
 		}
 	}
 
 	return "", false
 }
 
-func detectAooRepoRoot(start string) (string, bool) {
+func detectFRepoRoot(start string) (string, bool) {
 	dir := start
 	for {
 		if fileExists(filepath.Join(dir, "go.mod")) && fileExists(filepath.Join(dir, "internal", "bundled", "notes.go")) {

@@ -16,8 +16,8 @@ func TestAutoCommitPushPathCommitsAndPushes(t *testing.T) {
 
 	runGit(t, "", "init", "--bare", remote)
 	runGit(t, "", "clone", remote, worktree)
-	runGit(t, worktree, "config", "user.name", "aoo-test")
-	runGit(t, worktree, "config", "user.email", "aoo-test@example.com")
+	runGit(t, worktree, "config", "user.name", "f-test")
+	runGit(t, worktree, "config", "user.email", "f-test@example.com")
 
 	notePath := filepath.Join(worktree, "router.yaml")
 	if err := os.WriteFile(notePath, []byte("desc: router\n"), 0o644); err != nil {
@@ -26,17 +26,17 @@ func TestAutoCommitPushPathCommitsAndPushes(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := AutoCommitPushPath(notePath, "aoo: update router.yaml", &stdout, &stderr); err != nil {
+	if err := AutoCommitPushPath(notePath, "f: update router.yaml", &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
 
 	log := strings.TrimSpace(gitOutput(worktree, "log", "--format=%s", "-1"))
-	if log != "aoo: update router.yaml" {
+	if log != "f: update router.yaml" {
 		t.Fatalf("unexpected commit message: %q", log)
 	}
 
 	remoteLog := strings.TrimSpace(runGitOutput(t, "", "--git-dir", remote, "log", "--format=%s", "-1"))
-	if remoteLog != "aoo: update router.yaml" {
+	if remoteLog != "f: update router.yaml" {
 		t.Fatalf("expected pushed commit, got %q", remoteLog)
 	}
 }
@@ -48,8 +48,8 @@ func TestAutoCommitPushPathRebasesWhenRemoteHasNewCommit(t *testing.T) {
 
 	runGit(t, "", "init", "--bare", remote)
 	runGit(t, "", "clone", remote, worktree)
-	runGit(t, worktree, "config", "user.name", "aoo-test")
-	runGit(t, worktree, "config", "user.email", "aoo-test@example.com")
+	runGit(t, worktree, "config", "user.name", "f-test")
+	runGit(t, worktree, "config", "user.email", "f-test@example.com")
 
 	notePath := filepath.Join(worktree, "router.yaml")
 	if err := os.WriteFile(notePath, []byte("desc: router\n"), 0o644); err != nil {
@@ -61,8 +61,8 @@ func TestAutoCommitPushPathRebasesWhenRemoteHasNewCommit(t *testing.T) {
 	runGit(t, worktree, "push", "-u", "origin", branch)
 
 	runGit(t, "", "clone", remote, otherClone)
-	runGit(t, otherClone, "config", "user.name", "aoo-test")
-	runGit(t, otherClone, "config", "user.email", "aoo-test@example.com")
+	runGit(t, otherClone, "config", "user.name", "f-test")
+	runGit(t, otherClone, "config", "user.email", "f-test@example.com")
 	if err := os.WriteFile(filepath.Join(otherClone, "remote.yaml"), []byte("desc: remote\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -76,12 +76,12 @@ func TestAutoCommitPushPathRebasesWhenRemoteHasNewCommit(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	if err := AutoCommitPushPath(notePath, "aoo: update router.yaml", &stdout, &stderr); err != nil {
+	if err := AutoCommitPushPath(notePath, "f: update router.yaml", &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
 
 	remoteLog := runGitOutput(t, "", "--git-dir", remote, "log", "--format=%s", "-2")
-	if !strings.Contains(remoteLog, "aoo: update router.yaml") || !strings.Contains(remoteLog, "remote update") {
+	if !strings.Contains(remoteLog, "f: update router.yaml") || !strings.Contains(remoteLog, "remote update") {
 		t.Fatalf("expected rebased push to include both commits, got %q", remoteLog)
 	}
 }
@@ -93,8 +93,8 @@ func TestAutoCommitPushPathAbortsRebaseOnConflict(t *testing.T) {
 
 	runGit(t, "", "init", "--bare", remote)
 	runGit(t, "", "clone", remote, worktree)
-	runGit(t, worktree, "config", "user.name", "aoo-test")
-	runGit(t, worktree, "config", "user.email", "aoo-test@example.com")
+	runGit(t, worktree, "config", "user.name", "f-test")
+	runGit(t, worktree, "config", "user.email", "f-test@example.com")
 
 	notePath := filepath.Join(worktree, "router.yaml")
 	if err := os.WriteFile(notePath, []byte("desc: router\n"), 0o644); err != nil {
@@ -106,8 +106,8 @@ func TestAutoCommitPushPathAbortsRebaseOnConflict(t *testing.T) {
 	runGit(t, worktree, "push", "-u", "origin", branch)
 
 	runGit(t, "", "clone", remote, otherClone)
-	runGit(t, otherClone, "config", "user.name", "aoo-test")
-	runGit(t, otherClone, "config", "user.email", "aoo-test@example.com")
+	runGit(t, otherClone, "config", "user.name", "f-test")
+	runGit(t, otherClone, "config", "user.email", "f-test@example.com")
 	if err := os.WriteFile(filepath.Join(otherClone, "router.yaml"), []byte("desc: remote change\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,7 @@ func TestAutoCommitPushPathAbortsRebaseOnConflict(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	err := AutoCommitPushPath(notePath, "aoo: update router.yaml", &stdout, &stderr)
+	err := AutoCommitPushPath(notePath, "f: update router.yaml", &stdout, &stderr)
 	if err == nil {
 		t.Fatal("expected conflict error")
 	}
@@ -145,8 +145,8 @@ func TestSyncCommitsPullsAndPushesPendingChanges(t *testing.T) {
 
 	runGit(t, "", "init", "--bare", remote)
 	runGit(t, "", "clone", remote, worktree)
-	runGit(t, worktree, "config", "user.name", "aoo-test")
-	runGit(t, worktree, "config", "user.email", "aoo-test@example.com")
+	runGit(t, worktree, "config", "user.name", "f-test")
+	runGit(t, worktree, "config", "user.email", "f-test@example.com")
 
 	notePath := filepath.Join(worktree, "router.yaml")
 	if err := os.WriteFile(notePath, []byte("desc: router\n"), 0o644); err != nil {
@@ -158,8 +158,8 @@ func TestSyncCommitsPullsAndPushesPendingChanges(t *testing.T) {
 	runGit(t, worktree, "push", "-u", "origin", branch)
 
 	runGit(t, "", "clone", remote, otherClone)
-	runGit(t, otherClone, "config", "user.name", "aoo-test")
-	runGit(t, otherClone, "config", "user.email", "aoo-test@example.com")
+	runGit(t, otherClone, "config", "user.name", "f-test")
+	runGit(t, otherClone, "config", "user.email", "f-test@example.com")
 	if err := os.WriteFile(filepath.Join(otherClone, "remote.yaml"), []byte("desc: remote\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestSyncCommitsPullsAndPushesPendingChanges(t *testing.T) {
 	}
 
 	log := runGitOutput(t, "", "--git-dir", remote, "log", "--format=%s", "-3")
-	if !strings.Contains(log, "aoo: sync notes") || !strings.Contains(log, "remote update") {
+	if !strings.Contains(log, "f: sync notes") || !strings.Contains(log, "remote update") {
 		t.Fatalf("expected synced history to include local and remote commits, got %q", log)
 	}
 }
@@ -194,8 +194,8 @@ func TestSyncPullsRemoteChangesIntoCleanClone(t *testing.T) {
 
 	runGit(t, "", "init", "--bare", remote)
 	runGit(t, "", "clone", remote, worktree)
-	runGit(t, worktree, "config", "user.name", "aoo-test")
-	runGit(t, worktree, "config", "user.email", "aoo-test@example.com")
+	runGit(t, worktree, "config", "user.name", "f-test")
+	runGit(t, worktree, "config", "user.email", "f-test@example.com")
 
 	notePath := filepath.Join(worktree, "router.yaml")
 	if err := os.WriteFile(notePath, []byte("desc: router\n"), 0o644); err != nil {
@@ -207,8 +207,8 @@ func TestSyncPullsRemoteChangesIntoCleanClone(t *testing.T) {
 	runGit(t, worktree, "push", "-u", "origin", branch)
 
 	runGit(t, "", "clone", remote, otherClone)
-	runGit(t, otherClone, "config", "user.name", "aoo-test")
-	runGit(t, otherClone, "config", "user.email", "aoo-test@example.com")
+	runGit(t, otherClone, "config", "user.name", "f-test")
+	runGit(t, otherClone, "config", "user.email", "f-test@example.com")
 	if err := os.WriteFile(filepath.Join(otherClone, "extra.md"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestNonInteractiveGitEnvAutoAddsSSHKeysFromHome(t *testing.T) {
 	if err := os.MkdirAll(sshDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sshDir, "aookey"), []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(sshDir, "fkey"), []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(sshDir, "id_ed25519"), []byte("-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n"), 0o600); err != nil {
@@ -271,7 +271,7 @@ func TestNonInteractiveGitEnvAutoAddsSSHKeysFromHome(t *testing.T) {
 	env := nonInteractiveGitEnv()
 	joined := strings.Join(env, "\n")
 
-	expected := "GIT_SSH_COMMAND=ssh -i '" + filepath.Join(sshDir, "id_ed25519") + "' -i '" + filepath.Join(sshDir, "aookey") + "' -o BatchMode=yes"
+	expected := "GIT_SSH_COMMAND=ssh -i '" + filepath.Join(sshDir, "id_ed25519") + "' -i '" + filepath.Join(sshDir, "fkey") + "' -o BatchMode=yes"
 	if !strings.Contains(joined, expected) {
 		t.Fatalf("expected env to contain %q, got %q", expected, joined)
 	}

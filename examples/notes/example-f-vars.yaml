@@ -1,0 +1,5 @@
+- desc: example built-in vars
+  text: |
+    ~/.config/f/config.yaml
+    ~/.local/share/f/notes
+    /path/to/f

@@ -448,7 +448,7 @@ func inferActionDesc(command string, fallback string) string {
 			}
 		}
 		return "ssh"
-	case "grep", "find", "dig", "curl", "make", "git", "docker", "mount", "nmap", "echo", "aoo":
+	case "grep", "find", "dig", "curl", "make", "git", "docker", "mount", "nmap", "echo", "f":
 		return first
 	default:
 		return fallback

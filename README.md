@@ -1,6 +1,6 @@
 # f
 
-Terminal notes and command launcher. The project was formerly called `aoo`; `aoo` is still installed as a compatibility symlink.
+Terminal notes and command launcher.
 
 ## Install
 
@@ -11,12 +11,14 @@ sudo make install
 
 ## Config
 
-File: `~/.config/aoo/config.yaml`
+File: `~/.config/f/config.yaml`
 
 Minimal example:
 
 ```yaml
-notes_dir: ~/.local/share/aoo/notes
+schema_version: 1
+confirm_run: true
+notes_dir: ~/.local/share/f/notes
 theme: fzf-dark
 layout: bottom
 full_screen: true
@@ -42,11 +44,20 @@ f config show
 ```bash
 f
 f --query ssh
-f validate --dir ~/.local/share/aoo/notes
+f validate --dir ~/.local/share/f/notes
+f duplicates --dir ~/.local/share/f/notes
+f duplicates --dir ~/.local/share/f/notes --json
+f doctor
 f add "router dhcp"
 f add cmd "restart nginx"
 f upgrade
 ```
+
+`f duplicates` prints a deterministic report and exits nonzero when duplicate findings exist (and on validation errors). `f validate` retains malformed-file errors and reports duplicates as warnings.
+
+Commands require `[y/N]` confirmation before execution. Use `f --yes`, or set `confirm_run: false`, to bypass it. Print-only shortcuts never prompt or execute.
+
+If `~/.config/aoo/config.yaml` exists, run `f migrate`. Migration refuses to overwrite `~/.config/f/config.yaml` and does not move or delete the old notes directory; update `notes_dir` explicitly if desired.
 
 Keys:
 
@@ -84,4 +95,4 @@ Plain query searches notes and files. `:query` or `>query` searches only command
 
 You can store snippets as plain files: `netplan.yaml`, `bgp.conf`, `notes.md`.
 
-`aoo` shows them in search and opens the content as a note.
+`f` shows them in search and opens the content as a note.

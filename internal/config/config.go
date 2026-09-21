@@ -12,12 +12,15 @@ import (
 )
 
 const (
-	envNotesDir       = "AOO_NOTES_DIR"
-	legacyEnvNotesDir = "TERM_NOTES_DIR"
-	envTheme          = "AOO_THEME"
+	CurrentSchemaVersion = 1
+	envNotesDir          = "F_NOTES_DIR"
+	legacyEnvNotesDir    = "TERM_NOTES_DIR"
+	envTheme             = "F_THEME"
 )
 
 type File struct {
+	SchemaVersion    int    `yaml:"schema_version"`
+	ConfirmRun       bool   `yaml:"confirm_run"`
 	NotesDir         string `yaml:"notes_dir"`
 	NotesRepo        string `yaml:"notes_repo"`
 	Theme            string `yaml:"theme"`
@@ -31,6 +34,8 @@ type File struct {
 }
 
 type rawFile struct {
+	SchemaVersion       int    `yaml:"schema_version"`
+	ConfirmRun          *bool  `yaml:"confirm_run"`
 	NotesDir            string `yaml:"notes_dir"`
 	NotesRepo           string `yaml:"notes_repo"`
 	Theme               string `yaml:"theme"`
@@ -52,23 +57,23 @@ func (e SetupRequiredError) Error() string {
 notes directory is not configured
 
 Initial setup:
-  edit ~/.config/aoo/config.yaml
+  edit ~/.config/f/config.yaml
   and set notes_dir
 
 Or use commands:
-  aoo set-folder /path/to/notes
+  f set-folder /path/to/notes
 
 Temporary override:
-  aoo --dir /path/to/notes
-  AOO_NOTES_DIR=/path/to/notes aoo
+  f --dir /path/to/notes
+  F_NOTES_DIR=/path/to/notes f
 
 Check current config:
-  aoo config show
+  f config show
 `)
 }
 
 func ConfigPath() (string, error) {
-	if custom := strings.TrimSpace(os.Getenv("AOO_CONFIG_FILE")); custom != "" {
+	if custom := strings.TrimSpace(os.Getenv("F_CONFIG_FILE")); custom != "" {
 		return filepath.Abs(custom)
 	}
 
@@ -77,11 +82,55 @@ func ConfigPath() (string, error) {
 		return "", fmt.Errorf("cannot resolve user config dir: %w", err)
 	}
 
+	return filepath.Join(dir, "f", "config.yaml"), nil
+}
+
+func legacyConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
 	return filepath.Join(dir, "aoo", "config.yaml"), nil
+}
+
+func LegacyConfigPath() (string, error) { return legacyConfigPath() }
+
+func MigrateLegacy() (string, error) {
+	legacy, err := legacyConfigPath()
+	if err != nil {
+		return "", err
+	}
+	target, err := ConfigPath()
+	if err != nil {
+		return "", err
+	}
+	if _, err := os.Stat(target); err == nil {
+		return "", fmt.Errorf("refusing to overwrite existing config %s", target)
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+	raw, err := os.ReadFile(legacy)
+	if err != nil {
+		return "", fmt.Errorf("read legacy config %s: %w", legacy, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(target, raw, 0o644); err != nil {
+		return "", err
+	}
+	_, err = Load()
+	if err != nil {
+		_ = os.Remove(target)
+		return "", fmt.Errorf("legacy config is not compatible: %w", err)
+	}
+	return target, nil
 }
 
 func DefaultFile() File {
 	return File{
+		SchemaVersion:    CurrentSchemaVersion,
+		ConfirmRun:       true,
 		Theme:            "fzf-dark",
 		Layout:           "bottom",
 		FullScreen:       true,
@@ -102,6 +151,12 @@ func Load() (File, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
+			legacy, legacyErr := legacyConfigPath()
+			if legacyErr == nil {
+				if _, statErr := os.Stat(legacy); statErr == nil {
+					return File{}, fmt.Errorf("legacy config found at %s; run `f migrate` to migrate it explicitly", legacy)
+				}
+			}
 			cfg := DefaultFile()
 			if saveErr := Save(cfg); saveErr != nil {
 				return File{}, saveErr
@@ -112,11 +167,28 @@ func Load() (File, error) {
 	}
 
 	cfg := DefaultFile()
+	var keys map[string]yaml.Node
+	if err := yaml.Unmarshal(raw, &keys); err != nil {
+		return File{}, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	known := map[string]bool{"schema_version": true, "confirm_run": true, "notes_dir": true, "notes_repo": true, "theme": true, "layout": true, "full_screen": true, "picker_height": true, "focus_mode": true, "show_match_context": true, "show_list_on_start": true, "two_line_results": true, "show_preview": true, "show_notes_on_start": true}
+	for key := range keys {
+		if !known[key] {
+			return File{}, fmt.Errorf("unknown config key %q in %s (old SSH-picker configs are not compatible; edit manually)", key, path)
+		}
+	}
 	var parsed rawFile
 	if err := yaml.Unmarshal(raw, &parsed); err != nil {
 		return File{}, fmt.Errorf("parse config %s: %w", path, err)
 	}
+	if parsed.SchemaVersion < 0 || parsed.SchemaVersion > CurrentSchemaVersion {
+		return File{}, fmt.Errorf("unsupported schema_version %d in %s (current: %d)", parsed.SchemaVersion, path, CurrentSchemaVersion)
+	}
 
+	cfg.SchemaVersion = CurrentSchemaVersion
+	if parsed.ConfirmRun != nil {
+		cfg.ConfirmRun = *parsed.ConfirmRun
+	}
 	cfg.NotesDir = strings.TrimSpace(parsed.NotesDir)
 	cfg.NotesRepo = strings.TrimSpace(parsed.NotesRepo)
 	if value := strings.TrimSpace(parsed.Theme); value != "" {
@@ -312,13 +384,15 @@ func renderConfig(cfg File) string {
 		cfg.PickerHeight = DefaultFile().PickerHeight
 	}
 	lines := []string{
-		"# aoo",
+		"# f",
 		"# themes: fzf-dark, catppuccin-mocha, catppuccin-latte, dracula, nord, solarized-dark, solarized-light",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
 		"# show_match_context: preview line for selected item",
 		"# show_list_on_start: render results when query is empty",
 		"# two_line_results: desc on first line, command/text on second line",
+		"schema_version: " + strconv.Itoa(CurrentSchemaVersion),
+		"confirm_run: " + yamlScalarBool(cfg.ConfirmRun),
 		"notes_dir: " + yamlScalar(cfg.NotesDir),
 		"notes_repo: " + yamlScalar(cfg.NotesRepo),
 		"theme: " + yamlScalar(cfg.Theme),

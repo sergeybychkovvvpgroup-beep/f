@@ -1,6 +1,6 @@
 # f
 
-Терминальная утилита для заметок и запуска команд. Раньше проект назывался `aoo`; `aoo` всё ещё ставится как совместимый symlink.
+Терминальная утилита для заметок и запуска команд.
 
 ## Установка
 
@@ -11,12 +11,14 @@ sudo make install
 
 ## Конфиг
 
-Файл: `~/.config/aoo/config.yaml`
+Файл: `~/.config/f/config.yaml`
 
 Минимальный пример:
 
 ```yaml
-notes_dir: ~/.local/share/aoo/notes
+schema_version: 1
+confirm_run: true
+notes_dir: ~/.local/share/f/notes
 theme: fzf-dark
 layout: bottom
 full_screen: true
@@ -46,11 +48,20 @@ f config show
 ```bash
 f
 f --query ssh
-f validate --dir ~/.local/share/aoo/notes
+f validate --dir ~/.local/share/f/notes
+f duplicates --dir ~/.local/share/f/notes
+f duplicates --dir ~/.local/share/f/notes --json
+f doctor
 f add "router dhcp"
 f add cmd "restart nginx"
 f upgrade
 ```
+
+`f duplicates` печатает детерминированный отчёт и возвращает ненулевой код при наличии дублей. `f validate` сохраняет проверку ошибок формата и выводит предупреждения о дублях.
+
+Перед выполнением команды `f` показывает её и запрашивает `[y/N]`. Для запуска без подтверждения используйте `f --yes` или `confirm_run: false`. Режим печати команды ничего не выполняет.
+
+Если существует `~/.config/aoo/config.yaml`, выполните `f migrate`. Миграция не перезаписывает существующий `~/.config/f/config.yaml` и не перемещает старый каталог заметок автоматически.
 
 Горячие клавиши:
 
@@ -88,4 +99,4 @@ cmd: journalctl -u nginx -n 100
 
 Можно хранить сниппеты как обычные файлы: `netplan.yaml`, `bgp.conf`, `notes.md`.
 
-`aoo` покажет их в поиске и откроет содержимое как заметку.
+`f` покажет их в поиске и откроет содержимое как заметку.

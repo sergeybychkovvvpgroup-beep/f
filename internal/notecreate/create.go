@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 
+	"aoo/internal/notes"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,6 +44,10 @@ func Create(root string, kind Kind, title string) (Draft, error) {
 		}
 	}
 
+	if duplicate := findDraftDuplicate(root, kind, title); duplicate != "" {
+		return Draft{}, fmt.Errorf("exact duplicate already exists: %s", duplicate)
+	}
+
 	path, err := uniquePath(root, slugify(title))
 	if err != nil {
 		return Draft{}, err
@@ -65,8 +70,34 @@ func Create(root string, kind Kind, title string) (Draft, error) {
 	return Draft{
 		Path:          path,
 		Line:          line,
-		CommitMessage: fmt.Sprintf("aoo: %s %s", verb, filepath.Base(path)),
+		CommitMessage: fmt.Sprintf("f: %s %s", verb, filepath.Base(path)),
 	}, nil
+}
+
+func findDraftDuplicate(root string, kind Kind, title string) string {
+	result := notes.LoadDir(root)
+	wantTitle := strings.ToLower(strings.Join(strings.Fields(title), " "))
+	wantValue := "add note here"
+	if kind == KindCommand {
+		wantValue = `echo "replace with command"`
+	}
+	for _, entry := range result.Entries {
+		if strings.ToLower(strings.Join(strings.Fields(entry.Desc), " ")) != wantTitle {
+			continue
+		}
+		actions := entry.ActionsList()
+		if len(actions) != 1 {
+			continue
+		}
+		value := actions[0].Text
+		if kind == KindCommand {
+			value = actions[0].Cmd
+		}
+		if strings.Join(strings.Fields(value), " ") == wantValue {
+			return entry.SourcePath
+		}
+	}
+	return ""
 }
 
 func scaffold(kind Kind, title string) (string, int, error) {

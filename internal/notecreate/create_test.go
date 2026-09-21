@@ -54,3 +54,19 @@ func TestCreateUsesUniqueFilename(t *testing.T) {
 		t.Fatalf("unexpected unique path: %s", draft.Path)
 	}
 }
+
+func TestCreateRejectsExactDraftDuplicateAndPointsToExistingFile(t *testing.T) {
+	root := t.TempDir()
+	existing := filepath.Join(root, "router.yaml")
+	if err := os.WriteFile(existing, []byte("desc: router\ncmd: echo \"replace with command\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Create(root, KindCommand, " Router ")
+	if err == nil || !strings.Contains(err.Error(), existing) {
+		t.Fatalf("expected duplicate error naming %s, got %v", existing, err)
+	}
+	matches, _ := filepath.Glob(filepath.Join(root, "*.yaml"))
+	if len(matches) != 1 {
+		t.Fatalf("duplicate draft was created: %v", matches)
+	}
+}

@@ -28,7 +28,7 @@ func DefaultNotesDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "share", "aoo", "notes"), nil
+	return filepath.Join(home, ".local", "share", "f", "notes"), nil
 }
 
 func BootstrapIfNeeded(stdin io.Reader, stdout, stderr io.Writer) (string, error) {
@@ -51,7 +51,7 @@ func SetupSource(stdin io.Reader, stdout, stderr io.Writer) (string, error) {
 		return "", err
 	}
 
-	fmt.Fprintln(stdout, "aoo notes source")
+	fmt.Fprintln(stdout, "f notes source")
 	fmt.Fprintln(stdout, "1. repo")
 	fmt.Fprintln(stdout, "2. local folder")
 	fmt.Fprint(stdout, "(1/2?) [1]: ")
@@ -153,7 +153,7 @@ func Sync(dir string, stdout, stderr io.Writer) error {
 
 	if status, err := CheckStatus(dir); err == nil && status.Dirty {
 		fmt.Fprintf(stdout, "[notes] auto-committing %d pending change(s)\n", status.DirtyFiles)
-		if err := commitAll(dir, "aoo: sync notes", stdout, stderr); err != nil {
+		if err := commitAll(dir, "f: sync notes", stdout, stderr); err != nil {
 			return err
 		}
 	}

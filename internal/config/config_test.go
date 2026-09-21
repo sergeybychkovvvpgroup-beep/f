@@ -15,7 +15,7 @@ func TestResolveNotesDirUsesConfig(t *testing.T) {
 	}
 
 	t.Setenv("XDG_CONFIG_HOME", configHome)
-	t.Setenv("AOO_NOTES_DIR", "")
+	t.Setenv("F_NOTES_DIR", "")
 	t.Setenv("TERM_NOTES_DIR", "")
 
 	if _, err := SetNotesDir(notesDir); err != nil {
@@ -40,7 +40,7 @@ func TestResolveNotesDirReturnsSetupErrorWithoutSources(t *testing.T) {
 	workdir := t.TempDir()
 
 	t.Setenv("XDG_CONFIG_HOME", configHome)
-	t.Setenv("AOO_NOTES_DIR", "")
+	t.Setenv("F_NOTES_DIR", "")
 	t.Setenv("TERM_NOTES_DIR", "")
 
 	oldwd, err := os.Getwd()
@@ -248,5 +248,97 @@ func TestLoadAcceptsLegacyPreviewKeys(t *testing.T) {
 	}
 	if !strings.Contains(text, "show_list_on_start: true") {
 		t.Fatalf("expected migrated show_list_on_start key, got %q", text)
+	}
+}
+
+func TestConfigPathUsesFDirectory(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(path, filepath.Join("f", "config.yaml")) {
+		t.Fatalf("config path = %q", path)
+	}
+}
+
+func TestLoadMigratesUnversionedFConfigAndAddsSafetyDefaults(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, _ := ConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("notes_dir: /tmp/notes\ntheme: nord\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SchemaVersion != CurrentSchemaVersion || !cfg.ConfirmRun {
+		t.Fatalf("unexpected migrated config: %#v", cfg)
+	}
+	raw, _ := os.ReadFile(path)
+	if !strings.Contains(string(raw), "schema_version: 1") || !strings.Contains(string(raw), "confirm_run: true") {
+		t.Fatalf("migration was not persisted: %s", raw)
+	}
+}
+
+func TestLoadRejectsUnknownKeyWithoutRewriting(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, _ := ConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte("schema_version: 1\nhosts: []\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "unknown config key") {
+		t.Fatalf("expected unknown-key error, got %v", err)
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(original) {
+		t.Fatal("invalid config was rewritten")
+	}
+}
+
+func TestLegacyAooConfigRequiresExplicitMigration(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", home)
+	legacy := filepath.Join(home, "aoo", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("notes_dir: /tmp/notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "f migrate") {
+		t.Fatalf("expected migration instruction, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(home, "f", "config.yaml")); !os.IsNotExist(statErr) {
+		t.Fatal("legacy config was migrated implicitly")
+	}
+}
+
+func TestLoadRejectsUnsupportedSchemaVersionWithoutRewriting(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	path, _ := ConfigPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := []byte("schema_version: 99\nnotes_dir: /tmp/notes\n")
+	if err := os.WriteFile(path, original, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load()
+	if err == nil || !strings.Contains(err.Error(), "unsupported schema_version") {
+		t.Fatalf("expected unsupported schema error, got %v", err)
+	}
+	after, _ := os.ReadFile(path)
+	if string(after) != string(original) {
+		t.Fatal("unsupported config was rewritten")
 	}
 }

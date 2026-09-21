@@ -1,6 +1,6 @@
 version: 2
 
-project_name: aoo
+project_name: f
 
 before:
   hooks:
@@ -26,7 +26,7 @@ nfpms:
   - id: packages
     package_name: f
     vendor: Sergey Bychkov
-    homepage: https://github.com/sergeybychkovvvpgroup-beep/aoo
+    homepage: https://github.com/sergeybychkovvvpgroup-beep/f
     maintainer: Sergey Bychkov
     description: Terminal notes and command launcher with fuzzy search
     formats:
@@ -34,4 +34,4 @@ nfpms:
     bindir: /usr/bin
     contents:
       - src: ./README.md
-        dst: /usr/share/doc/aoo/README.md
+        dst: /usr/share/doc/f/README.md

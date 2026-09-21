@@ -596,10 +596,10 @@ func TestStatusLineHidesHitIndexWhenPreviewLineIsDisabled(t *testing.T) {
 
 func TestResultLinesDoNotRenderExtraInlinePreviewBlockForSelectedEntry(t *testing.T) {
 	entry := notes.Entry{
-		Desc: "aoo-help",
+		Desc: "f-help",
 		Actions: []notes.Action{{
 			Desc: "show",
-			Text: "aoo = terminal notes + command launcher.\n\nStart:\n  aoo\n  aoo --query ssh\n",
+			Text: "f = terminal notes + command launcher.\n\nStart:\n  f\n  f --query ssh\n",
 		}},
 	}
 
@@ -723,10 +723,10 @@ func TestSelectedPreviewLineUsesActivePreviewHit(t *testing.T) {
 
 func TestSelectedCommandPreviewDoesNotDuplicatePrefix(t *testing.T) {
 	entry := notes.Entry{
-		Desc: "aoo notes git add commit push",
+		Desc: "f notes git add commit push",
 		Actions: []notes.Action{{
 			Desc: "run",
-			Cmd:  `git -C ~/.local/share/aoo/notes add . && git -C ~/.local/share/aoo/notes commit -m "update" && git -C ~/.local/share/aoo/notes push`,
+			Cmd:  `git -C ~/.local/share/f/notes add . && git -C ~/.local/share/f/notes commit -m "update" && git -C ~/.local/share/f/notes push`,
 		}},
 	}
 
