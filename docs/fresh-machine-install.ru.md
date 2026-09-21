@@ -96,7 +96,7 @@ f setup --adopt <ssh-config-repo-url>
 - при запуске picker делает `git pull --rebase --autostash`;
 - перед `f add` тоже подтягивает изменения;
 - после `f add` делает commit и push;
-- после редактирования хоста через `e` делает commit и push.
+- после редактирования хоста через `Ctrl+E` / `Alt+E` делает commit и push.
 
 Ручная проверка:
 
