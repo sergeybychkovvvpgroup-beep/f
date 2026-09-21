@@ -84,7 +84,7 @@ func DefaultFile() File {
 		PickerHeight:     14,
 		FocusMode:        false,
 		ShowMatchContext: false,
-		ShowListOnStart:  false,
+		ShowListOnStart:  true,
 		TwoLineResults:   true,
 	}
 }

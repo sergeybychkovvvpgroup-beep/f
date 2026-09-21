@@ -13,6 +13,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const minSplitPaneWidth = 76
+
 type PickerModel struct {
 	input        textinput.Model
 	entries      []notes.Entry
@@ -767,7 +769,7 @@ func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, det
 }
 
 func (m PickerModel) useRightPreview(width int) bool {
-	return width >= 100 && m.shouldRenderResults()
+	return width >= minSplitPaneWidth && m.shouldRenderResults()
 }
 
 func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipgloss.Style) []string {
