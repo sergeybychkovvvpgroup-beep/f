@@ -58,3 +58,22 @@ func fileMode(t *testing.T, path string) os.FileMode {
 	}
 	return info.Mode()
 }
+
+func TestUpdateCacheIsIgnoredWhenItDiffersFromRunningBuild(t *testing.T) {
+	cached := updateCheckCache{
+		CheckedAt: time.Now(),
+		Commit:    "12d39feb52b73a70c907d592206b47458203215a",
+	}
+	current := "c7b2930c463e2b5599e73de8f7e44c2d5c3374f5"
+	if updateCacheUsable(cached, current, time.Now()) {
+		t.Fatal("stale mismatched cache would offer a downgrade instead of refreshing the remote HEAD")
+	}
+}
+
+func TestUpdateCacheIsUsedWhenItMatchesRunningBuild(t *testing.T) {
+	current := "c7b2930c463e2b5599e73de8f7e44c2d5c3374f5"
+	cached := updateCheckCache{CheckedAt: time.Now(), Commit: current}
+	if !updateCacheUsable(cached, current[:8], time.Now()) {
+		t.Fatal("fresh cache matching the running build should avoid a network check")
+	}
+}

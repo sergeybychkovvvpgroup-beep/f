@@ -50,7 +50,7 @@ func maybeOfferUpgrade(stdin io.Reader, stdout, stderr io.Writer) error {
 func latestUpgradeCommit(repoURL string) (string, error) {
 	cachePath, err := updateCachePath()
 	if err == nil {
-		if cached, ok := readUpdateCache(cachePath); ok && time.Since(cached.CheckedAt) < updateCheckInterval {
+		if cached, ok := readUpdateCache(cachePath); ok && updateCacheUsable(cached, buildCommit, time.Now()) {
 			return cached.Commit, nil
 		}
 	}
@@ -74,6 +74,11 @@ func latestUpgradeCommit(repoURL string) (string, error) {
 		_ = writeUpdateCache(cachePath, updateCheckCache{CheckedAt: time.Now(), Commit: commit})
 	}
 	return commit, nil
+}
+
+func updateCacheUsable(cached updateCheckCache, currentCommit string, now time.Time) bool {
+	age := now.Sub(cached.CheckedAt)
+	return age >= 0 && age < updateCheckInterval && commitsEqual(currentCommit, cached.Commit)
 }
 
 func updateCachePath() (string, error) {
