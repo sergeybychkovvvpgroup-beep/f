@@ -153,6 +153,12 @@ scp /tmp/aoo-f-linux-amd64 sergeyb@192.168.41.138:/tmp/f.new
 ssh sergeyb@192.168.41.138 'sh -lc '\''install -m 0755 /tmp/f.new ~/.local/bin/f; rm -f /tmp/f.new; ~/.local/bin/f version'\'''
 ```
 
+## Self-update behavior
+
+- The update-check cache is valid only when its commit matches the running binary's embedded `buildCommit`.
+- If the cached commit differs from the running build, refresh remote `HEAD` instead of offering the cached commit; otherwise a freshly upgraded binary can be offered a downgrade.
+- Production builds must embed the exact Git commit with `-ldflags "-X aoo/internal/app.buildCommit=$(git rev-parse HEAD)"`.
+
 ## Git workflow
 
 Public update/source repo: `https://github.com/sergeybychkovvvpgroup-beep/f.git`
