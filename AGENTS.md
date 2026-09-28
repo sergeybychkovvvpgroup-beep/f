@@ -29,6 +29,8 @@ User edit action must write back to `~/.ssh/config.d/aoo_hosts/aoo.conf`, not a 
 ## Important UX decisions
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
+- `ui_mode: full | light` is persisted in `~/.config/aoo/config.yaml`; `f config ui light|full` changes it.
+- Light mode is an fzf-like compact single-line list: no alternate-screen full UI, frames, right preview, or help footer.
 - Wide layout is split-pane:
   - top framed search/status box;
   - left compact result list;

@@ -3,10 +3,13 @@ package app
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"aoo/internal/config"
 	"aoo/internal/notes"
+	"aoo/internal/ui"
 )
 
 func TestPromptCommandRunPrintsCommandWithoutConfirmation(t *testing.T) {
@@ -57,5 +60,37 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	}
 	if got := strings.TrimSpace(stdout.String()); got != "f 0.4.1" {
 		t.Fatalf("version = %q, want %q", got, "f 0.4.1")
+	}
+}
+
+func TestConfigUISelectsLightMode(t *testing.T) {
+	t.Setenv("AOO_CONFIG_FILE", filepath.Join(t.TempDir(), "config.yaml"))
+	var stdout, stderr bytes.Buffer
+	if err := Run([]string{"config", "ui", "light"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UIMode != "light" {
+		t.Fatalf("ui mode = %q, want light", cfg.UIMode)
+	}
+	if !strings.Contains(stdout.String(), "ui mode: light") {
+		t.Fatalf("unexpected output: %q", stdout.String())
+	}
+}
+
+func TestLightModeUsesCompactNonFullscreenPicker(t *testing.T) {
+	cfg := config.DefaultFile()
+	cfg.UIMode = "light"
+	cfg.FullScreen = true
+	cfg.PickerHeight = 11
+	options := pickerOptions(cfg, ui.SyncStatus{})
+	if options.FullScreen {
+		t.Fatal("light mode must not use the full-screen alternate buffer")
+	}
+	if options.Height != 11 {
+		t.Fatalf("light mode height = %d, want 11", options.Height)
 	}
 }

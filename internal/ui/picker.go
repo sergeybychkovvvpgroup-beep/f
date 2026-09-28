@@ -177,6 +177,9 @@ func (m PickerModel) View() string {
 	input := m.input
 	input.Width = m.inputWidth()
 	inputLine := truncateRunes(input.View(), contentWidth)
+	if m.options.LightMode {
+		return m.lightView(contentWidth, effectiveHeight, inputLine)
+	}
 	if m.useRightPreview(contentWidth) {
 		return m.shelfView(contentWidth, effectiveHeight, inputLine, rowStyle, selectedStyle, detailStyle, helpStyle, titleStyle)
 	}
@@ -232,6 +235,31 @@ func (m PickerModel) View() string {
 	return mainView
 }
 
+func (m PickerModel) lightView(width, height int, inputLine string) string {
+	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.RowFG))
+	selectedStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.theme.SelectedFG)).
+		Background(lipgloss.Color(m.theme.SelectedBG))
+	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
+	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
+
+	compact := m
+	compact.options.SingleLineResults = true
+	compact.options.Layout = "top"
+	compact.options.ShowMatchContext = false
+	lines := []string{inputLine}
+	if compact.shouldRenderResults() {
+		bodyHeight := maxInt(2, height-2)
+		body := compact.resultLines(width, rowStyle, selectedStyle, detailStyle, detailStyle)
+		lines = append(lines, clipLines(body, bodyHeight)...)
+	}
+	for len(lines) < maxInt(1, height-1) {
+		lines = append(lines, "")
+	}
+	lines = append(lines, statusStyle.Render(compact.statusLine()))
+	return strings.Join(normalizeRenderedLines(lines, width), "\n")
+}
+
 func (m PickerModel) pollSyncStatus() tea.Cmd {
 	return tea.Tick(200*time.Millisecond, func(time.Time) tea.Msg {
 		return syncPollMsg{}
@@ -267,6 +295,9 @@ func (m PickerModel) Query() string {
 }
 
 func (m PickerModel) shouldRenderResults() bool {
+	if m.options.LightMode {
+		return true
+	}
 	if strings.TrimSpace(m.input.Value()) != "" {
 		return true
 	}
@@ -488,6 +519,9 @@ func (m PickerModel) resultRowHeight() int {
 }
 
 func (m PickerModel) twoLineResults() bool {
+	if m.options.LightMode {
+		return false
+	}
 	return !m.options.SingleLineResults
 }
 
@@ -769,6 +803,9 @@ func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, det
 }
 
 func (m PickerModel) useRightPreview(width int) bool {
+	if m.options.LightMode {
+		return false
+	}
 	return width >= minSplitPaneWidth && m.shouldRenderResults()
 }
 

@@ -19,6 +19,7 @@ const (
 type File struct {
 	NotesDir         string `yaml:"notes_dir"`
 	NotesRepo        string `yaml:"notes_repo"`
+	UIMode           string `yaml:"ui_mode"`
 	Layout           string `yaml:"layout"`
 	FullScreen       bool   `yaml:"full_screen"`
 	PickerHeight     int    `yaml:"picker_height"`
@@ -31,6 +32,7 @@ type File struct {
 type rawFile struct {
 	NotesDir            string `yaml:"notes_dir"`
 	NotesRepo           string `yaml:"notes_repo"`
+	UIMode              string `yaml:"ui_mode"`
 	Layout              string `yaml:"layout"`
 	FullScreen          *bool  `yaml:"full_screen"`
 	PickerHeight        *int   `yaml:"picker_height"`
@@ -79,6 +81,7 @@ func ConfigPath() (string, error) {
 
 func DefaultFile() File {
 	return File{
+		UIMode:           "full",
 		Layout:           "bottom",
 		FullScreen:       true,
 		PickerHeight:     14,
@@ -115,6 +118,9 @@ func Load() (File, error) {
 
 	cfg.NotesDir = strings.TrimSpace(parsed.NotesDir)
 	cfg.NotesRepo = strings.TrimSpace(parsed.NotesRepo)
+	if value := strings.TrimSpace(parsed.UIMode); value != "" {
+		cfg.UIMode = normalizeUIMode(value)
+	}
 	if value := strings.TrimSpace(parsed.Layout); value != "" {
 		cfg.Layout = normalizeLayout(value)
 	}
@@ -144,6 +150,7 @@ func Load() (File, error) {
 		cfg.PickerHeight = 6
 	}
 	cfg.Layout = normalizeLayout(cfg.Layout)
+	cfg.UIMode = normalizeUIMode(cfg.UIMode)
 	if configNeedsRewrite(raw, cfg) {
 		if err := Save(cfg); err != nil {
 			return File{}, err
@@ -242,6 +249,22 @@ func SetNotesRepo(repo string) error {
 	return Save(cfg)
 }
 
+func SetUIMode(mode string) (string, error) {
+	mode = strings.TrimSpace(strings.ToLower(mode))
+	if mode != "full" && mode != "light" {
+		return "", fmt.Errorf("ui mode must be full or light")
+	}
+	cfg, err := Load()
+	if err != nil {
+		return "", err
+	}
+	cfg.UIMode = mode
+	if err := Save(cfg); err != nil {
+		return "", err
+	}
+	return mode, nil
+}
+
 func hasVisibleYAML(matches []string) bool {
 	for _, match := range matches {
 		base := filepath.Base(match)
@@ -256,6 +279,7 @@ func hasVisibleYAML(matches []string) bool {
 func renderConfig(cfg File) string {
 	cfg.NotesDir = strings.TrimSpace(cfg.NotesDir)
 	cfg.NotesRepo = strings.TrimSpace(cfg.NotesRepo)
+	cfg.UIMode = normalizeUIMode(cfg.UIMode)
 	cfg.Layout = normalizeLayout(cfg.Layout)
 	if cfg.PickerHeight < 6 {
 		cfg.PickerHeight = DefaultFile().PickerHeight
@@ -263,10 +287,12 @@ func renderConfig(cfg File) string {
 	lines := []string{
 		"# f / aoo — SSH host picker",
 		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/aoo_hosts/*.conf",
+		"# ui_mode: full | light (fzf-like list without preview and frames)",
 		"# layout: top | bottom",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
 		"# show_list_on_start: render results when query is empty",
 		"# two_line_results: host on first line, ssh command on second line",
+		"ui_mode: " + yamlScalar(cfg.UIMode),
 		"layout: " + yamlScalar(cfg.Layout),
 		"full_screen: " + yamlScalarBool(cfg.FullScreen),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),
@@ -300,6 +326,9 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 	if !strings.Contains(text, "focus_mode:") {
 		return true
 	}
+	if !strings.Contains(text, "ui_mode:") {
+		return true
+	}
 	if !strings.Contains(text, "show_list_on_start:") {
 		return true
 	}
@@ -310,6 +339,15 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 	current := strings.TrimSpace(text)
 	expected := strings.TrimSpace(renderConfig(cfg))
 	return current != expected
+}
+
+func normalizeUIMode(value string) string {
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "light":
+		return "light"
+	default:
+		return "full"
+	}
 }
 
 func normalizeLayout(value string) string {

@@ -75,19 +75,7 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 		return err
 	}
 
-	options := ui.Options{
-		FullScreen:        cfg.FullScreen,
-		Height:            cfg.PickerHeight,
-		FocusMode:         cfg.FocusMode,
-		ShowMatchContext:  false,
-		ShowListOnStart:   cfg.ShowListOnStart,
-		SingleLineResults: !cfg.TwoLineResults,
-		Layout:            cfg.Layout,
-		InitialSync:       syncStatus,
-	}
-	if options.FullScreen {
-		options.Height = 0
-	}
+	options := pickerOptions(cfg, syncStatus)
 
 	selected, _, nextQuery, cancelled, editRequested, printOnly, createKind, err := ui.RunPicker(hosts.ToEntries(list), *query, options)
 	if err != nil || cancelled {
@@ -119,6 +107,25 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 		return nil
 	}
 	return runCommand(*selected, action, stdout, stderr)
+}
+
+func pickerOptions(cfg config.File, syncStatus ui.SyncStatus) ui.Options {
+	lightMode := cfg.UIMode == "light"
+	options := ui.Options{
+		FullScreen:        cfg.FullScreen && !lightMode,
+		Height:            cfg.PickerHeight,
+		LightMode:         lightMode,
+		FocusMode:         cfg.FocusMode,
+		ShowMatchContext:  false,
+		ShowListOnStart:   cfg.ShowListOnStart,
+		SingleLineResults: !cfg.TwoLineResults,
+		Layout:            cfg.Layout,
+		InitialSync:       syncStatus,
+	}
+	if options.FullScreen {
+		options.Height = 0
+	}
+	return options
 }
 
 func editSSHConfigEntry(entry notes.Entry, stdout, stderr io.Writer) error {
@@ -532,7 +539,15 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 		}
 		return nil
 	}
-	return errors.New("usage: f config show|sync")
+	if len(args) == 2 && args[0] == "ui" {
+		mode, err := config.SetUIMode(args[1])
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "ui mode: %s\n", mode)
+		return nil
+	}
+	return errors.New("usage: f config show|sync|ui full|light")
 }
 
 func runSetup(args []string, stdout, stderr io.Writer) error {
@@ -810,6 +825,7 @@ Usage:
   %s add NAME HOST      also works for scripted adding
   %s list               print saved/imported hosts
   %s config show        show config/hosts paths
+  %s config ui light    use compact fzf-like UI (full restores split-pane)
   %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/aoo_hosts
   %s setup --adopt REPO adopt current ~/.ssh/config.d/aoo_hosts as hosts repo
 
@@ -818,7 +834,7 @@ Add options:
 
 Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/aoo_hosts.
 Aliases from ~/.ssh/config are shown automatically.
-`, name, name, name, name, name, name, name, name)
+`, name, name, name, name, name, name, name, name, name)
 }
 
 func cliName() string {
