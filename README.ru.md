@@ -46,18 +46,9 @@ f config ui full  # вернуть полный split-pane UI
 - `e` — редактировать SSH config block выбранной записи;
 - `Esc` / `Ctrl+C` — выйти.
 
-## Режимы
+## Единый поиск
 
-Записи группируются автоматически по синтаксису SSH config:
-
-| Клавиша | Режим | Как определяется |
-| --- | --- | --- |
-| `F1` | general SSH logins | обычные SSH-записи |
-| `F2` | jumps | `ProxyJump` / `ProxyCommand` |
-| `F3` | port forwards | `LocalForward` / `RemoteForward` / `DynamicForward` |
-| `F4` | commands | `RemoteCommand` или custom command entries |
-
-Текущий режим показывается в верхней status line.
+Все записи ищутся в одном списке: обычные SSH-входы, jump-маршруты, port forwards и записи с `RemoteCommand`. Переключателей `F1`–`F4` нет.
 
 ## Модель SSH config
 

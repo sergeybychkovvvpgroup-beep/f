@@ -32,7 +32,6 @@ type PickerModel struct {
 	createKind   string
 	previewHit   int
 	cancelled    bool
-	mode         string
 	previewCache map[string]notes.PreviewMatch
 	theme        Theme
 	syncStatus   SyncStatus
@@ -59,7 +58,6 @@ func NewPicker(entries []notes.Entry, initialQuery string, theme Theme, options 
 		input:        input,
 		entries:      entries,
 		allEntries:   entries,
-		mode:         "general",
 		theme:        theme,
 		options:      options,
 		previewCache: make(map[string]notes.PreviewMatch),
@@ -128,18 +126,6 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+n", "alt+n":
 			m.createKind = "host"
 			return m, tea.Quit
-		case "f1":
-			m.setMode("general")
-			return m, nil
-		case "f2":
-			m.setMode("jumps")
-			return m, nil
-		case "f3":
-			m.setMode("forwards")
-			return m, nil
-		case "f4":
-			m.setMode("commands")
-			return m, nil
 		case "up", "ctrl+k":
 			m.moveCursor(-1)
 			return m, nil
@@ -304,64 +290,8 @@ func (m PickerModel) shouldRenderResults() bool {
 	return m.options.ShowListOnStart
 }
 
-func (m *PickerModel) setMode(mode string) {
-	mode = normalizePickerMode(mode)
-	if m.mode == mode {
-		return
-	}
-	m.mode = mode
-	m.cursor = 0
-	m.previewHit = 0
-	m.refresh()
-}
-
-func normalizePickerMode(mode string) string {
-	switch strings.TrimSpace(strings.ToLower(mode)) {
-	case "jumps", "forwards", "commands":
-		return strings.TrimSpace(strings.ToLower(mode))
-	default:
-		return "general"
-	}
-}
-
-func (m PickerModel) modeLabel() string {
-	switch normalizePickerMode(m.mode) {
-	case "jumps":
-		return "F2 jumps"
-	case "forwards":
-		return "F3 forwards"
-	case "commands":
-		return "F4 commands"
-	default:
-		return "F1 general"
-	}
-}
-
-func filterEntriesByMode(entries []notes.Entry, mode string) []notes.Entry {
-	mode = normalizePickerMode(mode)
-	out := make([]notes.Entry, 0, len(entries))
-	for _, entry := range entries {
-		entryMode := strings.TrimSpace(strings.ToLower(entry.Mode))
-		if entryMode == "" {
-			entryMode = "general"
-		}
-		switch mode {
-		case "general":
-			if !strings.Contains(" "+entryMode+" ", " forwards ") && !strings.Contains(" "+entryMode+" ", " commands ") {
-				out = append(out, entry)
-			}
-		default:
-			if strings.Contains(" "+entryMode+" ", " "+mode+" ") {
-				out = append(out, entry)
-			}
-		}
-	}
-	return out
-}
-
 func (m *PickerModel) refresh() {
-	m.mode = normalizePickerMode(m.mode)
-	m.entries = filterEntriesByMode(m.allEntries, m.mode)
+	m.entries = m.allEntries
 	m.matches = notes.Filter(m.entries, m.input.Value())
 	if m.cursor >= len(m.matches) {
 		m.cursor = len(m.matches) - 1
@@ -526,7 +456,7 @@ func (m PickerModel) twoLineResults() bool {
 }
 
 func (m PickerModel) statusLine() string {
-	status := fmt.Sprintf("%s  %d/%d", m.modeLabel(), len(m.matches), len(m.entries))
+	status := fmt.Sprintf("all  %d/%d", len(m.matches), len(m.entries))
 	if len(m.matches) == 0 {
 		return status
 	}
@@ -593,7 +523,7 @@ func (m PickerModel) syncStatusColor() string {
 }
 
 func pickerHelpText() string {
-	return "F1 general  F2 jumps  F3 forwards  F4 commands  " + string([]rune{0x2191, 0x2193}) + " select  enter ssh  ctrl+e edit  ctrl+y print  esc quit"
+	return string([]rune{0x2191, 0x2193}) + " select  enter ssh  ctrl+e edit  ctrl+y print  esc quit"
 }
 
 func isPrintOnlyKey(key string) bool {

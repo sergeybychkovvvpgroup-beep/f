@@ -46,18 +46,11 @@ User edit action must write back to `~/.ssh/config.d/aoo_hosts/aoo.conf`, not a 
   - full command, multiline when useful.
 - Tags are currently intentionally hidden from UI.
 
-## Modes and hotkeys
+## Search and hotkeys
 
-Picker modes:
+All SSH logins, jumps, forwards, and command entries share one fuzzy-search result set. Do not add mode tabs or `F1`–`F4` filtering.
 
-```text
-F1 general   ordinary SSH logins
-F2 jumps     ProxyJump / ProxyCommand
-F3 forwards  LocalForward / RemoteForward / DynamicForward
-F4 commands  RemoteCommand / custom command entries
-```
-
-Other keys:
+Keys:
 
 ```text
 Enter        run selected command
@@ -104,7 +97,7 @@ omada-chashnikovo [tunnel] [remote 10.117.100.10:443]
 
 The loader reads `~/.ssh/config` and follows `Include` directives.
 
-Classification is based on parsed directives:
+Entries retain internal classification for display and preview metadata, but classification must not split the picker search. It is based on parsed directives:
 
 - `LocalForward`, `RemoteForward`, `DynamicForward` -> forwards;
 - `RemoteCommand` -> commands;
