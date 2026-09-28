@@ -908,6 +908,9 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 	if err := os.Rename(tmpPath, target); err != nil {
 		return fmt.Errorf("install upgraded binary: %w", err)
 	}
+	if cachePath, cacheErr := updateCachePath(); cacheErr == nil {
+		_ = recordInstalledCommit(cachePath, commit, time.Now())
+	}
 	fmt.Fprintf(stdout, "[upgrade] done: %s\n", target)
 	return nil
 }

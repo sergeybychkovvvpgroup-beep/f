@@ -77,3 +77,19 @@ func TestUpdateCacheIsUsedWhenItMatchesRunningBuild(t *testing.T) {
 		t.Fatal("fresh cache matching the running build should avoid a network check")
 	}
 }
+
+func TestRecordInstalledCommitReplacesStaleCache(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "update-check.json")
+	if err := writeUpdateCache(path, updateCheckCache{CheckedAt: time.Now(), Commit: "old"}); err != nil {
+		t.Fatal(err)
+	}
+	installed := "7af35d99b0021b7db09b12c72bdf2834d4a80e8b"
+	when := time.Now().Add(time.Second)
+	if err := recordInstalledCommit(path, installed, when); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := readUpdateCache(path)
+	if !ok || got.Commit != installed || !got.CheckedAt.Equal(when) {
+		t.Fatalf("installed cache = %#v, readable=%v", got, ok)
+	}
+}

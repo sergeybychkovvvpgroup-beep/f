@@ -81,6 +81,10 @@ func updateCacheUsable(cached updateCheckCache, currentCommit string, now time.T
 	return age >= 0 && age < updateCheckInterval && commitsEqual(currentCommit, cached.Commit)
 }
 
+func recordInstalledCommit(path, commit string, installedAt time.Time) error {
+	return writeUpdateCache(path, updateCheckCache{CheckedAt: installedAt, Commit: strings.TrimSpace(commit)})
+}
+
 func updateCachePath() (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
