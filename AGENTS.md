@@ -30,7 +30,9 @@ User edit action must write back to `~/.ssh/config.d/aoo_hosts/aoo.conf`, not a 
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/aoo/config.yaml`; `f config ui compact|full-screen` changes it.
+- `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
+- `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. The frameless picker always shows its single-line result list.
 - Both modes use the same frameless, tabless, preview-free, single-line fzf-style result list.
 - `compact` stays in the normal terminal buffer and supports `layout: top | bottom`, changed by `f config layout top|bottom`.
 - `full-screen` uses the alternate screen and always renders from the top.

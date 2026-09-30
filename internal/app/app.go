@@ -112,14 +112,10 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 func pickerOptions(cfg config.File, syncStatus ui.SyncStatus) ui.Options {
 	fullScreen := cfg.UIMode == "full-screen"
 	options := ui.Options{
-		FullScreen:        fullScreen,
-		Height:            cfg.PickerHeight,
-		FocusMode:         cfg.FocusMode,
-		ShowMatchContext:  false,
-		ShowListOnStart:   cfg.ShowListOnStart,
-		SingleLineResults: !cfg.TwoLineResults,
-		Layout:            cfg.Layout,
-		InitialSync:       syncStatus,
+		FullScreen:  fullScreen,
+		Height:      cfg.PickerHeight,
+		Layout:      cfg.Layout,
+		InitialSync: syncStatus,
 	}
 	if options.FullScreen {
 		options.Height = 0

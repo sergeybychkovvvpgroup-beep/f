@@ -43,7 +43,7 @@ func TestTruncateRunesIgnoresANSISequences(t *testing.T) {
 }
 
 func TestPickerShowsListBeforeTyping(t *testing.T) {
-	m := PickerModel{options: Options{ShowListOnStart: false}}
+	m := PickerModel{}
 	if !m.shouldRenderResults() {
 		t.Fatal("picker must show the complete list before typing, like fzf")
 	}
@@ -59,7 +59,7 @@ func TestShortQueryDoesNotRenderEllipsis(t *testing.T) {
 }
 
 func TestPickerViewOmitsFramesTabsPreviewAndHelp(t *testing.T) {
-	m := NewPicker(nil, "prod", DefaultTheme(), Options{ShowListOnStart: true, Height: 8})
+	m := NewPicker(nil, "prod", DefaultTheme(), Options{Height: 8})
 	m.width = 100
 	m.height = 8
 	view := m.View()

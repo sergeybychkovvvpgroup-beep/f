@@ -7,9 +7,40 @@ import (
 	"testing"
 )
 
-func TestDefaultShowsSSHListOnStart(t *testing.T) {
-	if !DefaultFile().ShowListOnStart {
-		t.Fatal("default picker must show the SSH list immediately")
+func TestLoadRemovesObsoletePickerOptions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("AOO_CONFIG_FILE", path)
+	raw := strings.Join([]string{
+		"ui_mode: compact",
+		"layout: bottom",
+		"picker_height: 20",
+		"focus_mode: false",
+		"show_list_on_start: true",
+		"two_line_results: true",
+		"",
+	}, "\n")
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PickerHeight != 20 {
+		t.Fatalf("picker height = %d, want 20", cfg.PickerHeight)
+	}
+	rewritten, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(rewritten)
+	for _, obsolete := range []string{"focus_mode:", "show_list_on_start:", "two_line_results:"} {
+		if strings.Contains(text, obsolete) {
+			t.Fatalf("obsolete option %q remains in config:\n%s", obsolete, text)
+		}
+	}
+	if !strings.Contains(text, "picker_height: 20") {
+		t.Fatalf("working picker height was removed:\n%s", text)
 	}
 }
 

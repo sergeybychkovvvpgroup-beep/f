@@ -371,7 +371,7 @@ func (m PickerModel) isBottomLayout() bool {
 }
 
 func (m PickerModel) showInlinePreview() bool {
-	return m.options.ShowMatchContext
+	return false
 }
 
 func (m PickerModel) resultRowHeight() int {

@@ -17,31 +17,19 @@ const (
 )
 
 type File struct {
-	NotesDir         string `yaml:"notes_dir"`
-	NotesRepo        string `yaml:"notes_repo"`
-	UIMode           string `yaml:"ui_mode"`
-	Layout           string `yaml:"layout"`
-	FullScreen       bool   `yaml:"full_screen"`
-	PickerHeight     int    `yaml:"picker_height"`
-	FocusMode        bool   `yaml:"focus_mode"`
-	ShowMatchContext bool   `yaml:"show_match_context"`
-	ShowListOnStart  bool   `yaml:"show_list_on_start"`
-	TwoLineResults   bool   `yaml:"two_line_results"`
+	NotesDir     string `yaml:"notes_dir"`
+	NotesRepo    string `yaml:"notes_repo"`
+	UIMode       string `yaml:"ui_mode"`
+	Layout       string `yaml:"layout"`
+	PickerHeight int    `yaml:"picker_height"`
 }
 
 type rawFile struct {
-	NotesDir            string `yaml:"notes_dir"`
-	NotesRepo           string `yaml:"notes_repo"`
-	UIMode              string `yaml:"ui_mode"`
-	Layout              string `yaml:"layout"`
-	FullScreen          *bool  `yaml:"full_screen"`
-	PickerHeight        *int   `yaml:"picker_height"`
-	FocusMode           *bool  `yaml:"focus_mode"`
-	ShowMatchContext    *bool  `yaml:"show_match_context"`
-	ShowListOnStart     *bool  `yaml:"show_list_on_start"`
-	TwoLineResults      *bool  `yaml:"two_line_results"`
-	LegacyShowPreview   *bool  `yaml:"show_preview"`
-	LegacyShowNotesList *bool  `yaml:"show_notes_on_start"`
+	NotesDir     string `yaml:"notes_dir"`
+	NotesRepo    string `yaml:"notes_repo"`
+	UIMode       string `yaml:"ui_mode"`
+	Layout       string `yaml:"layout"`
+	PickerHeight *int   `yaml:"picker_height"`
 }
 
 type SetupRequiredError struct{}
@@ -81,14 +69,9 @@ func ConfigPath() (string, error) {
 
 func DefaultFile() File {
 	return File{
-		UIMode:           "compact",
-		Layout:           "bottom",
-		FullScreen:       false,
-		PickerHeight:     14,
-		FocusMode:        false,
-		ShowMatchContext: false,
-		ShowListOnStart:  true,
-		TwoLineResults:   true,
+		UIMode:       "compact",
+		Layout:       "bottom",
+		PickerHeight: 14,
 	}
 }
 
@@ -124,27 +107,8 @@ func Load() (File, error) {
 	if value := strings.TrimSpace(parsed.Layout); value != "" {
 		cfg.Layout = normalizeLayout(value)
 	}
-	if parsed.FullScreen != nil {
-		cfg.FullScreen = *parsed.FullScreen
-	}
 	if parsed.PickerHeight != nil {
 		cfg.PickerHeight = *parsed.PickerHeight
-	}
-	if parsed.FocusMode != nil {
-		cfg.FocusMode = *parsed.FocusMode
-	}
-	if parsed.ShowMatchContext != nil {
-		cfg.ShowMatchContext = *parsed.ShowMatchContext
-	} else if parsed.LegacyShowPreview != nil {
-		cfg.ShowMatchContext = *parsed.LegacyShowPreview
-	}
-	if parsed.ShowListOnStart != nil {
-		cfg.ShowListOnStart = *parsed.ShowListOnStart
-	} else if parsed.LegacyShowNotesList != nil {
-		cfg.ShowListOnStart = *parsed.LegacyShowNotesList
-	}
-	if parsed.TwoLineResults != nil {
-		cfg.TwoLineResults = *parsed.TwoLineResults
 	}
 	if cfg.PickerHeight < 6 {
 		cfg.PickerHeight = 6
@@ -309,15 +273,9 @@ func renderConfig(cfg File) string {
 		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/aoo_hosts/*.conf",
 		"# ui_mode: compact | full-screen (both use the same frameless fzf-style UI)",
 		"# layout: top | bottom (compact mode only)",
-		"# focus_mode: hide hotkeys/help footer for a quieter UI",
-		"# show_list_on_start: render results when query is empty",
-		"# two_line_results: host on first line, ssh command on second line",
 		"ui_mode: " + yamlScalar(cfg.UIMode),
 		"layout: " + yamlScalar(cfg.Layout),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),
-		"focus_mode: " + yamlScalarBool(cfg.FocusMode),
-		"show_list_on_start: " + yamlScalarBool(cfg.ShowListOnStart),
-		"two_line_results: " + yamlScalarBool(cfg.TwoLineResults),
 		"",
 	}
 	return strings.Join(lines, "\n")
@@ -336,6 +294,10 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 		"theme:",
 		"# search_mode:",
 		"full_screen:",
+		"focus_mode:",
+		"show_match_context:",
+		"show_list_on_start:",
+		"two_line_results:",
 	}
 	for _, marker := range legacyMarkers {
 		if strings.Contains(text, marker) {
@@ -343,16 +305,7 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 		}
 	}
 
-	if !strings.Contains(text, "focus_mode:") {
-		return true
-	}
 	if !strings.Contains(text, "ui_mode:") {
-		return true
-	}
-	if !strings.Contains(text, "show_list_on_start:") {
-		return true
-	}
-	if !strings.Contains(text, "two_line_results:") {
 		return true
 	}
 
@@ -393,11 +346,4 @@ func yamlScalar(value string) string {
 		return `""`
 	}
 	return strings.TrimSpace(string(raw))
-}
-
-func yamlScalarBool(value bool) string {
-	if value {
-		return "true"
-	}
-	return "false"
 }
