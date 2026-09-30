@@ -110,11 +110,10 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 }
 
 func pickerOptions(cfg config.File, syncStatus ui.SyncStatus) ui.Options {
-	lightMode := cfg.UIMode == "light"
+	fullScreen := cfg.UIMode == "full-screen"
 	options := ui.Options{
-		FullScreen:        cfg.FullScreen && !lightMode,
+		FullScreen:        fullScreen,
 		Height:            cfg.PickerHeight,
-		LightMode:         lightMode,
 		FocusMode:         cfg.FocusMode,
 		ShowMatchContext:  false,
 		ShowListOnStart:   cfg.ShowListOnStart,
@@ -547,7 +546,15 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "ui mode: %s\n", mode)
 		return nil
 	}
-	return errors.New("usage: f config show|sync|ui full|light")
+	if len(args) == 2 && args[0] == "layout" {
+		layout, err := config.SetLayout(args[1])
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(stdout, "layout: %s\n", layout)
+		return nil
+	}
+	return errors.New("usage: f config show|sync|ui compact|full-screen|layout top|bottom")
 }
 
 func runSetup(args []string, stdout, stderr io.Writer) error {
@@ -825,7 +832,9 @@ Usage:
   %s add NAME HOST      also works for scripted adding
   %s list               print saved/imported hosts
   %s config show        show config/hosts paths
-  %s config ui light    use compact fzf-like UI (full restores split-pane)
+  %s config ui compact  use compact fzf-style UI
+  %s config ui full-screen use full-screen fzf-style UI
+  %s config layout top  place compact picker at top (or bottom)
   %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/aoo_hosts
   %s setup --adopt REPO adopt current ~/.ssh/config.d/aoo_hosts as hosts repo
 
@@ -834,7 +843,7 @@ Add options:
 
 Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/aoo_hosts.
 Aliases from ~/.ssh/config are shown automatically.
-`, name, name, name, name, name, name, name, name, name)
+`, name, name, name, name, name, name, name, name, name, name, name)
 }
 
 func cliName() string {

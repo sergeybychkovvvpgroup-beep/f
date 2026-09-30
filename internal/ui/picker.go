@@ -11,9 +11,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
-
-const minSplitPaneWidth = 76
 
 type PickerModel struct {
 	input        textinput.Model
@@ -49,9 +48,9 @@ func NewPicker(entries []notes.Entry, initialQuery string, theme Theme, options 
 	input.CharLimit = 256
 	input.Width = 48
 	input.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.RowFG))
-	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.TitleDimFG))
+	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPrompt)).Bold(true)
 	input.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.HelpFG))
-	input.Cursor.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.RowFG))
+	input.Cursor.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.StatusWarnFG))
 	input.Cursor.SetMode(cursor.CursorStatic)
 
 	m := PickerModel{
@@ -148,102 +147,40 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m PickerModel) View() string {
-	bg := lipgloss.Color(m.theme.InputBG)
-	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.RowFG)).Background(bg)
+	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.RowFG))
 	selectedStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.theme.SelectedFG)).
-		Background(lipgloss.Color(m.theme.SelectedBG))
-	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG)).Background(bg)
-	helpStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.HelpFG)).Background(bg)
-	titleStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleFG)).Background(bg)
-	containerStyle := lipgloss.NewStyle().Width(m.contentWidth()).MaxWidth(m.contentWidth()).Background(bg)
+		Background(lipgloss.Color(m.theme.SelectedBG)).
+		Bold(true)
+	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
+	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
 	contentWidth := m.contentWidth()
 	effectiveHeight := m.effectiveHeight()
 
 	input := m.input
 	input.Width = m.inputWidth()
 	inputLine := truncateRunes(input.View(), contentWidth)
-	if m.options.LightMode {
-		return m.lightView(contentWidth, effectiveHeight, inputLine)
+	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)
+	body := []string{}
+	if m.shouldRenderResults() {
+		body = clipLines(m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, detailStyle), maxInt(1, effectiveHeight-2))
 	}
-	if m.useRightPreview(contentWidth) {
-		return m.shelfView(contentWidth, effectiveHeight, inputLine, rowStyle, selectedStyle, detailStyle, helpStyle, titleStyle)
-	}
-	lines := make([]string, 0, maxInt(6, effectiveHeight))
 
-	if m.isBottomLayout() {
-		resultBlock := []string{}
-		if m.shouldRenderResults() {
-			bodyHeight := maxInt(4, effectiveHeight-4)
-			resultBlock = append(resultBlock, m.resultBlock(contentWidth, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)...)
-			resultBlock = append(resultBlock, "")
+	lines := make([]string, 0, effectiveHeight)
+	if m.isBottomLayout() && !m.options.FullScreen {
+		lines = append(lines, body...)
+		for len(lines) < maxInt(0, effectiveHeight-2) {
+			lines = append([]string{""}, lines...)
 		}
-		lines = append(lines, resultBlock...)
-		lines = append(lines, truncateRunes(m.renderStatusBar(titleStyle), contentWidth))
-		if !m.options.FocusMode {
-			lines = append(lines, helpStyle.Render(truncateRunes(pickerHelpText(), contentWidth)))
-		}
-		lines = append(lines, inputLine)
-		if effectiveHeight > 0 && len(lines) < effectiveHeight {
-			padding := make([]string, 0, effectiveHeight-len(lines))
-			for len(lines)+len(padding) < effectiveHeight {
-				padding = append(padding, "")
-			}
-			lines = append(padding, lines...)
-		}
+		lines = append(lines, statusLine, inputLine)
 	} else {
-		lines = append(lines, inputLine)
-		if m.shouldRenderResults() {
+		lines = append(lines, inputLine, statusLine)
+		lines = append(lines, body...)
+		for len(lines) < effectiveHeight {
 			lines = append(lines, "")
-			bodyHeight := maxInt(4, effectiveHeight-5)
-			lines = append(lines, m.resultBlock(contentWidth, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)...)
-		}
-		lines = append(lines, "")
-		lines = append(lines, truncateRunes(m.renderStatusBar(titleStyle), contentWidth))
-		if !m.options.FocusMode {
-			lines = append(lines, helpStyle.Render(truncateRunes(pickerHelpText(), contentWidth)))
-		}
-		if effectiveHeight > 0 && len(lines) < effectiveHeight {
-			fillerAt := len(lines) - 1
-			padding := make([]string, 0, effectiveHeight-len(lines))
-			for len(lines)+len(padding) < effectiveHeight {
-				padding = append(padding, "")
-			}
-			lines = append(lines[:fillerAt], append(padding, lines[fillerAt:]...)...)
 		}
 	}
-
-	lines = normalizeRenderedLines(lines, contentWidth)
-	mainView := containerStyle.
-		Height(maxInt(4, effectiveHeight)).
-		MaxHeight(maxInt(4, effectiveHeight)).
-		Render(strings.Join(lines, "\n"))
-	return mainView
-}
-
-func (m PickerModel) lightView(width, height int, inputLine string) string {
-	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.RowFG))
-	selectedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.theme.SelectedFG)).
-		Background(lipgloss.Color(m.theme.SelectedBG))
-	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
-
-	compact := m
-	compact.options.SingleLineResults = true
-	compact.options.Layout = "top"
-	compact.options.ShowMatchContext = false
-	lines := []string{inputLine}
-	if compact.shouldRenderResults() {
-		bodyHeight := maxInt(2, height-2)
-		body := compact.resultLines(width, rowStyle, selectedStyle, detailStyle, detailStyle)
-		lines = append(lines, clipLines(body, bodyHeight)...)
-	}
-	for len(lines) < maxInt(1, height-1) {
-		lines = append(lines, "")
-	}
-	lines = append(lines, statusStyle.Render(compact.statusLine()))
-	return strings.Join(normalizeRenderedLines(lines, width), "\n")
+	return strings.Join(normalizeRenderedLines(clipLines(lines, effectiveHeight), contentWidth), "\n")
 }
 
 func (m PickerModel) pollSyncStatus() tea.Cmd {
@@ -281,13 +218,7 @@ func (m PickerModel) Query() string {
 }
 
 func (m PickerModel) shouldRenderResults() bool {
-	if m.options.LightMode {
-		return true
-	}
-	if strings.TrimSpace(m.input.Value()) != "" {
-		return true
-	}
-	return m.options.ShowListOnStart
+	return true
 }
 
 func (m *PickerModel) refresh() {
@@ -349,9 +280,9 @@ func (m PickerModel) offset() int {
 }
 
 func (m PickerModel) maxVisibleItems() int {
-	available := m.effectiveHeight() - 4
-	if available < 6 {
-		available = 6
+	available := m.effectiveHeight() - 2
+	if available < 2 {
+		available = 2
 	}
 	maxItems := available / m.resultRowHeight()
 	if maxItems < 2 {
@@ -426,7 +357,9 @@ func (m PickerModel) effectiveHeight() int {
 }
 
 func (m PickerModel) inputWidth() int {
-	width := m.contentWidth() - lipgloss.Width(m.input.Prompt)
+	// Bubbles reserves one cell for the cursor. Leave that cell outside the
+	// configured text width or it appends an overflow ellipsis to short queries.
+	width := m.contentWidth() - lipgloss.Width(m.input.Prompt) - 1
 	if width < 1 {
 		return 1
 	}
@@ -449,10 +382,7 @@ func (m PickerModel) resultRowHeight() int {
 }
 
 func (m PickerModel) twoLineResults() bool {
-	if m.options.LightMode {
-		return false
-	}
-	return !m.options.SingleLineResults
+	return false
 }
 
 func (m PickerModel) statusLine() string {
@@ -588,15 +518,10 @@ func truncateRunes(value string, limit int) string {
 	if limit <= 0 {
 		return ""
 	}
-	if utf8.RuneCountInString(value) <= limit {
+	if ansi.StringWidth(value) <= limit {
 		return value
 	}
-	if limit <= 1 {
-		return "…"
-	}
-
-	runes := []rune(value)
-	return string(runes[:limit-1]) + "…"
+	return ansi.Truncate(value, limit, "…")
 }
 
 func padRight(value string, width int) string {
@@ -674,105 +599,6 @@ func previewHitCount(preview notes.PreviewMatch) int {
 	return len(preview.Occurrences)
 }
 
-func (m PickerModel) shelfView(width, height int, inputLine string, rowStyle, selectedStyle, detailStyle, helpStyle, titleStyle lipgloss.Style) string {
-	if height < 8 {
-		height = 8
-	}
-	chrome := lipgloss.Color(m.theme.InputBorder)
-	bg := lipgloss.Color(m.theme.InputBG)
-	queryText := titleStyle.Render("aoo  "+m.statusLine()+"  ") + inputLine
-	queryBox := lipgloss.NewStyle().
-		Width(maxInt(1, width-2)).
-		Height(1).
-		Border(lipgloss.NormalBorder()).
-		BorderForeground(chrome).
-		Background(bg).
-		Render(queryText)
-
-	bodyHeight := maxInt(4, height-4)
-	compact := m
-	compact.options.SingleLineResults = true
-	compact.options.Layout = "top"
-	body := compact.resultBlock(width, bodyHeight, rowStyle, selectedStyle, detailStyle, helpStyle)
-
-	help := helpStyle.Width(width).Render(truncateRunes(pickerHelpText(), width))
-	lines := append([]string{queryBox}, body...)
-	lines = append(lines, help)
-	lines = paintBackground(lines, width, lipgloss.NewStyle().Background(bg))
-	return lipgloss.NewStyle().Width(width).Background(bg).Render(strings.Join(lines, "\n"))
-}
-
-func (m PickerModel) resultBlock(width, height int, rowStyle, selectedStyle, detailStyle, hintStyle lipgloss.Style) []string {
-	if !m.useRightPreview(width) {
-		return m.resultLines(width, rowStyle, selectedStyle, detailStyle, hintStyle)
-	}
-
-	gap := 1
-	previewWidth := width / 2
-	if previewWidth < 42 {
-		previewWidth = 42
-	}
-	if previewWidth > 84 {
-		previewWidth = 84
-	}
-	listWidth := width - previewWidth - gap
-	if listWidth < 32 {
-		return m.resultLines(width, rowStyle, selectedStyle, detailStyle, hintStyle)
-	}
-
-	left := m.resultLines(listWidth-2, rowStyle, selectedStyle, detailStyle, hintStyle)
-	right := m.previewLines(previewWidth-2, height-2, detailStyle, hintStyle)
-	bg := lipgloss.Color(m.theme.InputBG)
-	boxStyle := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(m.theme.InputBorder)).Background(bg)
-	fillStyle := lipgloss.NewStyle().Background(bg)
-	leftBox := boxStyle.Width(maxInt(1, listWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(left, height-2, listWidth-2, fillStyle), "\n"))
-	rightBox := boxStyle.Width(maxInt(1, previewWidth-2)).Height(maxInt(1, height-2)).Render(strings.Join(fillLines(right, height-2, previewWidth-2, fillStyle), "\n"))
-	gapText := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", gap))
-	joined := strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, leftBox, gapText, rightBox), "\n")
-	return paintBackground(joined, width, lipgloss.NewStyle().Background(bg))
-}
-
-func (m PickerModel) useRightPreview(width int) bool {
-	if m.options.LightMode {
-		return false
-	}
-	return width >= minSplitPaneWidth && m.shouldRenderResults()
-}
-
-func (m PickerModel) previewLines(width, height int, detailStyle, hintStyle lipgloss.Style) []string {
-	if len(m.matches) == 0 {
-		return []string{detailStyle.Render("No selection")}
-	}
-	entry := m.matches[m.cursor].Entry
-	action := entry.QuickAction()
-	lines := []string{hintStyle.Render("name")}
-	lines = append(lines, detailStyle.Render(truncateRunes(entry.DisplayName(), width)))
-	if action != nil {
-		if desc := strings.TrimSpace(action.Desc); desc != "" && desc != "ssh" {
-			lines = append(lines, "")
-			lines = append(lines, hintStyle.Render("description"))
-			for _, line := range wrapText(desc, width) {
-				lines = append(lines, detailStyle.Render(line))
-			}
-		}
-		if cmd := strings.TrimSpace(action.Cmd); cmd != "" {
-			lines = append(lines, "")
-			lines = append(lines, hintStyle.Render("short command"))
-			for _, line := range commandPreviewLines(cmd, width) {
-				lines = append(lines, detailStyle.Render(line))
-			}
-		}
-		if full := strings.TrimSpace(action.Banner); full != "" {
-			lines = append(lines, "")
-			lines = append(lines, hintStyle.Render("full command"))
-			for _, line := range commandPreviewLines(full, width) {
-				lines = append(lines, detailStyle.Render(line))
-			}
-		}
-	}
-	return clipLines(lines, height)
-}
-
 func commandPreviewLines(value string, width int) []string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -806,32 +632,6 @@ func commandPreviewLines(value string, width int) []string {
 	return lines
 }
 
-func fillLines(lines []string, height, width int, style lipgloss.Style) []string {
-	out := clipLines(lines, height)
-	for len(out) < height {
-		out = append(out, style.Render(strings.Repeat(" ", maxInt(0, width))))
-	}
-	for i := range out {
-		visible := lipgloss.Width(out[i])
-		if visible < width {
-			out[i] += style.Render(strings.Repeat(" ", width-visible))
-		}
-	}
-	return out
-}
-
-func paintBackground(lines []string, width int, style lipgloss.Style) []string {
-	out := make([]string, len(lines))
-	for i, line := range lines {
-		visible := lipgloss.Width(line)
-		if visible < width {
-			line += strings.Repeat(" ", width-visible)
-		}
-		out[i] = style.Render(line)
-	}
-	return out
-}
-
 func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle, hintStyle lipgloss.Style) []string {
 	if len(m.matches) == 0 {
 		return []string{detailStyle.Render("No matches")}
@@ -862,7 +662,7 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 	}
 
 	lines := make([]string, 0, len(visible)*maxInt(2, m.resultRowHeight()))
-	if m.isBottomLayout() {
+	if m.isBottomLayout() && !m.options.FullScreen {
 		for i := len(rows) - 1; i >= 0; i-- {
 			lines = append(lines, rows[i].lines...)
 		}
@@ -908,12 +708,25 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 		secondary = detailText
 	}
 	combined := compactResultLine(primary, secondary, contentWidth)
+	query := strings.TrimSpace(m.input.Value())
 	if selected {
-		return selectedStyle.Render(padRight(prefix+combined, rowWidth))
+		matchStyle := selectedStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+		rendered := selectedStyle.Render(prefix) + renderFuzzyText(combined, query, selectedStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
+		if padding > 0 {
+			rendered += selectedStyle.Render(strings.Repeat(" ", padding))
+		}
+		return rendered
 	}
 
 	if secondary == "" || combined == primary {
-		return rowStyle.Render(padRight(prefix+combined, rowWidth))
+		matchStyle := rowStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+		rendered := rowStyle.Render(prefix) + renderFuzzyText(combined, query, rowStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
+		if padding > 0 {
+			rendered += rowStyle.Render(strings.Repeat(" ", padding))
+		}
+		return rendered
 	}
 
 	combinedRunes := []rune(combined)
@@ -928,6 +741,52 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 		second += strings.Repeat(" ", rowWidth-visible)
 	}
 	return rowStyle.Render(first) + detailStyle.Render(second)
+}
+
+func renderFuzzyText(text, query string, baseStyle, matchStyle lipgloss.Style) string {
+	indexes := fuzzyRuneIndexes(text, query)
+	if len(indexes) == 0 {
+		return baseStyle.Render(text)
+	}
+	var out strings.Builder
+	for index, char := range []rune(text) {
+		style := baseStyle
+		if indexes[index] {
+			style = matchStyle
+		}
+		out.WriteString(style.Render(string(char)))
+	}
+	return out.String()
+}
+
+func fuzzyRuneIndexes(text, query string) map[int]bool {
+	textRunes := []rune(strings.ToLower(text))
+	indexes := map[int]bool{}
+	for _, term := range strings.Fields(strings.ToLower(query)) {
+		termRunes := []rune(term)
+		if len(termRunes) == 0 {
+			continue
+		}
+		matched := make([]int, 0, len(termRunes))
+		termIndex := 0
+		for textIndex, char := range textRunes {
+			if char != termRunes[termIndex] {
+				continue
+			}
+			matched = append(matched, textIndex)
+			termIndex++
+			if termIndex == len(termRunes) {
+				break
+			}
+		}
+		if termIndex != len(termRunes) {
+			continue
+		}
+		for _, index := range matched {
+			indexes[index] = true
+		}
+	}
+	return indexes
 }
 
 func compactResultLine(primary, secondary string, width int) string {
@@ -1025,9 +884,7 @@ func (m *PickerModel) moveCursor(delta int) {
 	}
 	target := m.cursor + delta
 	// Bottom layout renders results bottom-up, so keys are inverted there.
-	// Wide sshelf/split-pane mode always renders top-down, even if the legacy
-	// config still says layout: bottom.
-	if m.isBottomLayout() && !m.useRightPreview(m.contentWidth()) {
+	if m.isBottomLayout() && !m.options.FullScreen {
 		target = m.cursor - delta
 	}
 	if target < 0 || target >= len(m.matches) {

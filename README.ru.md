@@ -1,10 +1,46 @@
 # f / aoo
 
-`f` / `aoo` — персональный OpenSSH picker и launcher.
+`f` / `aoo` — персональный OpenSSH picker в стиле современного `fzf`.
 
-Утилита читает обычный SSH config, показывает fuzzy TUI и запускает настоящий `ssh`. Для импортированных SSH-записей нет отдельной скрытой базы хостов.
+Утилита читает обычный SSH config, выполняет fuzzy-поиск по всем типам записей в одном списке и запускает настоящий `ssh`. Отдельной скрытой базы импортированных SSH-хостов нет.
 
-Текущий UX ориентирован на `sshelf`: сверху строка поиска, слева компактный список, справа подробности выбранной записи.
+## Интерфейс
+
+Рамки, вкладки, preview-панель и отдельный большой UI удалены. В обоих режимах используется один и тот же минимальный интерфейс:
+
+- строка запроса;
+- счётчик совпадений;
+- одноcтрочный список;
+- цветное выделение совпавших символов;
+- контрастная выбранная строка.
+
+Доступны два размера:
+
+```bash
+f config ui compact      # компактный picker в текущем терминале
+f config ui full-screen  # тот же интерфейс на весь экран
+```
+
+Положение compact-режима:
+
+```bash
+f config layout bottom   # внизу экрана
+f config layout top      # вверху экрана
+```
+
+Старые значения конфигурации мигрируют автоматически: `light` → `compact`, `full` → `full-screen`.
+
+### Compact, bottom
+
+![Compact picker at the bottom](docs/screenshots/compact-bottom.png)
+
+### Compact, top
+
+![Compact picker at the top](docs/screenshots/compact-top.png)
+
+### Full-screen
+
+![Full-screen picker](docs/screenshots/full-screen.png)
 
 ## Установка на новую машину
 
@@ -20,39 +56,43 @@ curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/i
 f setup <ssh-config-repo-url>
 ```
 
-`f setup` клонирует repo в `~/.ssh/config.d/aoo_hosts`, добавляет в `~/.ssh/config` строку `Include ~/.ssh/config.d/aoo_hosts/*.conf`, и машина готова к работе. Чтобы один раз опубликовать текущий список хостов этой машины как начальное содержимое repo, используй `f setup --adopt <ssh-config-repo-url>`.
+`f setup` клонирует repo в `~/.ssh/config.d/aoo_hosts`, добавляет в `~/.ssh/config` строку `Include ~/.ssh/config.d/aoo_hosts/*.conf`, и машина готова к работе. Чтобы один раз опубликовать текущий список хостов этой машины как начальное содержимое repo, используй:
+
+```bash
+f setup --adopt <ssh-config-repo-url>
+```
 
 Подробная статья: [Установка aoo/f на свежей машине](docs/fresh-machine-install.ru.md).
 
 ## Быстрый старт
 
 ```bash
-f             # открыть picker
-f prod db     # открыть picker с начальным запросом
-f list        # вывести известные записи
-f config show # показать пути конфигов
-f config sync # подтянуть изменения хостов
-f config ui light # включить компактный fzf-подобный режим
-f config ui full  # вернуть полный split-pane UI
+f                       # открыть picker
+f prod db               # открыть с начальным запросом
+f list                  # вывести известные записи
+f config show           # показать пути конфигов
+f config sync           # подтянуть изменения хостов
+f config ui compact     # compact UI
+f config ui full-screen # полноэкранный UI
+f config layout bottom  # compact снизу
+f config layout top     # compact сверху
 ```
 
-`light` показывает только строку поиска, одноcтрочный список и компактный статус. Он не открывает полноэкранный alternate buffer и не рисует рамки, preview-панель и строку подсказок.
-
-В picker:
+Клавиши:
 
 - ввод — фильтр;
+- `↑` / `↓`, `Ctrl+K` / `Ctrl+J` — выбор;
 - `Enter` — запустить выбранный SSH;
 - `Ctrl+Y` / `Alt+Enter` — вывести команду без запуска;
-- `e` — редактировать SSH config block выбранной записи;
+- `Ctrl+E` / `Alt+E` — редактировать SSH config block;
+- `Ctrl+N` — добавить хост;
 - `Esc` / `Ctrl+C` — выйти.
 
 ## Единый поиск
 
-Все записи ищутся в одном списке: обычные SSH-входы, jump-маршруты, port forwards и записи с `RemoteCommand`. Переключателей `F1`–`F4` нет.
+Обычные SSH-входы, jump-маршруты, port forwards и записи с `RemoteCommand` находятся в одном fuzzy-списке. Вкладок и переключателей `F1`–`F4` нет.
 
 ## Модель SSH config
-
-`aoo` работает с обычными файлами OpenSSH config.
 
 Ожидаемый активный файл:
 
@@ -60,84 +100,44 @@ f config ui full  # вернуть полный split-pane UI
 ~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
-В `~/.ssh/config` обычно должен быть include:
+В `~/.ssh/config` должен быть include:
 
 ```ssh-config
 Include ~/.ssh/config.d/aoo_hosts/*.conf
 ```
 
-Picker читает `~/.ssh/config` и следует `Include` директивам. Для импортированных SSH config entries запуск идёт через точный alias:
+Picker читает `~/.ssh/config` и следует `Include` директивам. Для импортированных записей запуск идёт через точный alias:
 
 ```bash
 ssh alias-name
 ```
 
-Так сохраняется поведение OpenSSH для `ProxyJump`, `LocalForward`, `RemoteCommand`, legacy algorithms, forwards и прочих опций.
+Так сохраняется поведение OpenSSH для `ProxyJump`, forwards, `RemoteCommand`, identity files, legacy algorithms и остальных опций.
 
-Справа показывается best-effort expanded multiline command для читаемости, но выполнение всё равно идёт через alias.
+## Редактирование и синхронизация
 
-## Редактирование
+`Ctrl+E` выходит из TUI и открывает `$EDITOR`, fallback — `nano`. Сохранённый block upsert-ится в `~/.ssh/config.d/aoo_hosts/aoo.conf` между маркерами `# aoo-edit begin/end`.
 
-Hotkey:
-
-```text
-e
-```
-
-Поведение:
-
-1. `aoo` выходит из TUI и открывает `$EDITOR`, fallback — `nano`.
-2. В редактор попадает SSH config block, собранный из `ssh -G <alias>`.
-3. После сохранения block upsert-ится в:
-
-```text
-~/.ssh/config.d/aoo_hosts/aoo.conf
-```
-
-Block оборачивается маркерами:
-
-```ssh-config
-# aoo-edit begin alias-name
-Host alias-name
-  HostName ...
-  User ...
-# aoo-edit end alias-name
-```
-
-Generated/imported source files не переписываются. Пользовательские правки должны жить в обычном активном `aoo.conf`. Если `~/.ssh/config.d/aoo_hosts` является git-репозиторием, aoo делает pull при запуске и commit/push после редактирования через `e` или `f add`, то есть синк хостов работает в обе стороны по модели nb notes.
+Если `~/.ssh/config.d/aoo_hosts` является git-репозиторием, `aoo` делает pull при запуске и commit/push после редактирования или `f add`.
 
 ## Правила отображения
 
-Левая панель специально короткая:
-
-- показывается только читаемое имя записи;
 - шумные префиксы `ssh-` и `aoo-` скрываются только в UI;
-- route suffixes человеко-читаемые, например:
+- route suffixes становятся читаемыми: `[netbird emergency]`, `[jump]`, `[tunnel]`;
+- у forwards показывается remote endpoint;
+- реальные alias и команды не изменяются.
+
+Пример:
 
 ```text
 ssh-pve-beria-03-netrack-netbird-emergency
 ```
 
-показывается как:
+отображается как:
 
 ```text
 pve-beria-03-netrack [netbird emergency]
 ```
-
-Для forwards в коротком имени сразу виден удалённый endpoint:
-
-```text
-omada-chashnikovo [tunnel] [remote 10.117.100.10:443]
-```
-
-Правая панель содержит подробности выбранной строки:
-
-- name;
-- description;
-- short command;
-- full command, многострочно если полезно.
-
-Теги сейчас в UI не показываются.
 
 ## Добавление записей
 
@@ -146,9 +146,7 @@ f add NAME HOST
 f add db 10.20.30.40 -user admin -p 2222 --args "-A -J jump"
 ```
 
-`Ctrl+N` в picker запускает интерактивное добавление.
-
-Новые записи сохраняются как marked OpenSSH blocks в `~/.ssh/config.d/aoo_hosts/aoo.conf`. Legacy YAML hosts из `~/.config/aoo/` пока читаются для совместимости, но новые хосты должны жить в SSH config repo.
+`Ctrl+N` в picker запускает интерактивное добавление. Новые записи сохраняются как OpenSSH blocks в `~/.ssh/config.d/aoo_hosts/aoo.conf`.
 
 ## Сборка и установка из исходников
 
@@ -158,8 +156,9 @@ go build -o ~/.local/bin/f ./cmd/f
 ln -sf f ~/.local/bin/aoo
 ```
 
-Cross-build для Linux amd64:
+Production-сборка должна содержать точный commit:
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o /tmp/aoo-f-linux-amd64 ./cmd/f
+commit=$(git rev-parse HEAD)
+go build -buildvcs=false -ldflags "-X aoo/internal/app.buildCommit=$commit" -o ~/.local/bin/f ./cmd/f
 ```

@@ -14,6 +14,7 @@ type Theme struct {
 	InputBG      string
 	InputBorder  string
 	InputPrompt  string
+	MatchFG      string
 	RowFG        string
 	DividerFG    string
 	SelectedMark string
@@ -28,17 +29,18 @@ func DefaultTheme() Theme {
 		Name:         "default",
 		TitleFG:      "#cdd6f4",
 		TitleDimFG:   "#6c7086",
-		SelectedFG:   "#1e1e2e",
-		SelectedBG:   "#cdd6f4",
+		SelectedFG:   "#ffffff",
+		SelectedBG:   "#313244",
 		DetailFG:     "#a6adc8",
 		HelpFG:       "#6c7086",
 		InputFG:      "#cdd6f4",
 		InputBG:      "",
 		InputBorder:  "#a6adc8",
-		InputPrompt:  "#94e2d5",
+		InputPrompt:  "#f38ba8",
+		MatchFG:      "#f5c2e7",
 		RowFG:        "#cdd6f4",
 		DividerFG:    "#45475a",
-		SelectedMark: "▸",
+		SelectedMark: ">",
 		StatusOKFG:   "#a6e3a1",
 		StatusWarnFG: "#f9e2af",
 		StatusErrFG:  "#f38ba8",

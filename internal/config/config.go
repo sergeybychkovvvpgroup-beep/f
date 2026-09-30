@@ -81,9 +81,9 @@ func ConfigPath() (string, error) {
 
 func DefaultFile() File {
 	return File{
-		UIMode:           "full",
+		UIMode:           "compact",
 		Layout:           "bottom",
-		FullScreen:       true,
+		FullScreen:       false,
 		PickerHeight:     14,
 		FocusMode:        false,
 		ShowMatchContext: false,
@@ -250,9 +250,13 @@ func SetNotesRepo(repo string) error {
 }
 
 func SetUIMode(mode string) (string, error) {
-	mode = strings.TrimSpace(strings.ToLower(mode))
-	if mode != "full" && mode != "light" {
-		return "", fmt.Errorf("ui mode must be full or light")
+	switch strings.TrimSpace(strings.ToLower(mode)) {
+	case "compact", "light":
+		mode = "compact"
+	case "full-screen", "fullscreen", "full":
+		mode = "full-screen"
+	default:
+		return "", fmt.Errorf("ui mode must be compact or full-screen")
 	}
 	cfg, err := Load()
 	if err != nil {
@@ -263,6 +267,22 @@ func SetUIMode(mode string) (string, error) {
 		return "", err
 	}
 	return mode, nil
+}
+
+func SetLayout(layout string) (string, error) {
+	layout = strings.TrimSpace(strings.ToLower(layout))
+	if layout != "top" && layout != "bottom" {
+		return "", fmt.Errorf("layout must be top or bottom")
+	}
+	cfg, err := Load()
+	if err != nil {
+		return "", err
+	}
+	cfg.Layout = layout
+	if err := Save(cfg); err != nil {
+		return "", err
+	}
+	return layout, nil
 }
 
 func hasVisibleYAML(matches []string) bool {
@@ -287,14 +307,13 @@ func renderConfig(cfg File) string {
 	lines := []string{
 		"# f / aoo — SSH host picker",
 		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/aoo_hosts/*.conf",
-		"# ui_mode: full | light (fzf-like list without preview and frames)",
-		"# layout: top | bottom",
+		"# ui_mode: compact | full-screen (both use the same frameless fzf-style UI)",
+		"# layout: top | bottom (compact mode only)",
 		"# focus_mode: hide hotkeys/help footer for a quieter UI",
 		"# show_list_on_start: render results when query is empty",
 		"# two_line_results: host on first line, ssh command on second line",
 		"ui_mode: " + yamlScalar(cfg.UIMode),
 		"layout: " + yamlScalar(cfg.Layout),
-		"full_screen: " + yamlScalarBool(cfg.FullScreen),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),
 		"focus_mode: " + yamlScalarBool(cfg.FocusMode),
 		"show_list_on_start: " + yamlScalarBool(cfg.ShowListOnStart),
@@ -316,6 +335,7 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 		"notes_repo:",
 		"theme:",
 		"# search_mode:",
+		"full_screen:",
 	}
 	for _, marker := range legacyMarkers {
 		if strings.Contains(text, marker) {
@@ -343,10 +363,12 @@ func configNeedsRewrite(raw []byte, cfg File) bool {
 
 func normalizeUIMode(value string) string {
 	switch strings.TrimSpace(strings.ToLower(value)) {
-	case "light":
-		return "light"
+	case "compact", "light":
+		return "compact"
+	case "full-screen", "fullscreen", "full":
+		return "full-screen"
 	default:
-		return "full"
+		return DefaultFile().UIMode
 	}
 }
 

@@ -1,63 +1,91 @@
 # f / aoo
 
-`f` / `aoo` is a personal OpenSSH picker and launcher.
+`f` / `aoo` is a personal OpenSSH picker with a modern `fzf`-style terminal UI.
 
-It is intentionally small: it reads normal OpenSSH config, shows a fuzzy TUI, and then runs real `ssh`. There is no private host database for imported SSH entries.
+It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list, and runs real `ssh`. Imported SSH entries are not copied into a private host database.
 
-Current UX direction is inspired by `sshelf`: top search box, compact list on the left, selected entry details on the right.
+## Interface
+
+Frames, tabs, preview panes, and the former large split UI have been removed. Both sizes use the same minimal interface:
+
+- query line;
+- match counter;
+- single-line results;
+- colored fuzzy-match characters;
+- high-contrast selected row.
+
+Choose the size:
+
+```bash
+f config ui compact      # compact picker in the current terminal
+f config ui full-screen  # the same picker using the full screen
+```
+
+Place compact mode at either edge:
+
+```bash
+f config layout bottom
+f config layout top
+```
+
+Legacy config values migrate automatically: `light` → `compact`, `full` → `full-screen`.
+
+### Compact, bottom
+
+![Compact picker at the bottom](docs/screenshots/compact-bottom.png)
+
+### Compact, top
+
+![Compact picker at the top](docs/screenshots/compact-top.png)
+
+### Full-screen
+
+![Full-screen picker](docs/screenshots/full-screen.png)
 
 ## Install on a new machine
 
-One command installs `f` and the legacy `aoo` symlink:
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
-```
-
-Then attach your hosts repository:
-
-```bash
 f setup <ssh-config-repo-url>
 ```
 
-`f setup` clones the repo into `~/.ssh/config.d/aoo_hosts`, ensures `~/.ssh/config` has `Include ~/.ssh/config.d/aoo_hosts/*.conf`, and the machine is ready to use. To publish the current machine's existing `~/.ssh/config.d/aoo_hosts` as the initial repo contents, run `f setup --adopt <ssh-config-repo-url>` once on that machine.
+The installer adds `f` and the legacy `aoo` symlink. `f setup` clones the hosts repository into `~/.ssh/config.d/aoo_hosts` and ensures `~/.ssh/config` includes `~/.ssh/config.d/aoo_hosts/*.conf`.
+
+To publish the current machine's existing hosts as the initial repository contents:
+
+```bash
+f setup --adopt <ssh-config-repo-url>
+```
 
 ## Quick start
 
 ```bash
-f             # open picker
-f prod db     # open picker with initial query
-f list        # print known entries
-f config show # show config paths
-f config sync # pull latest host changes
+f                       # open picker
+f prod db               # start with a query
+f list                  # print known entries
+f config show           # show config paths
+f config sync           # pull host changes
+f config ui compact     # compact UI
+f config ui full-screen # full-screen UI
+f config layout bottom  # compact at bottom
+f config layout top     # compact at top
 ```
 
-When `f` starts interactively, it checks for a newer repository commit at most once every 15 minutes. If an update exists, press Enter at the prompt to build and atomically install it; the new binary is used on the next launch. `f upgrade` performs the same update manually. Both paths require `git`, Go, and repository access. Set `AOO_NO_UPDATE_CHECK=1` to disable startup checks.
-
-In the picker:
+Keys:
 
 - type to filter;
-- `Enter` runs the selected SSH command;
-- `Ctrl+Y` / `Alt+Enter` prints the command without running;
-- `e` edits the selected SSH config block;
-- `Esc` / `Ctrl+C` quits.
+- `↑` / `↓`, `Ctrl+K` / `Ctrl+J` to move;
+- `Enter` to run the selected SSH command;
+- `Ctrl+Y` / `Alt+Enter` to print without running;
+- `Ctrl+E` / `Alt+E` to edit the selected SSH config block;
+- `Ctrl+N` to add a host;
+- `Esc` / `Ctrl+C` to quit.
 
-## Modes
+## Unified search
 
-Entries are grouped automatically from SSH config syntax:
-
-| Key | Mode | Detection |
-| --- | --- | --- |
-| `F1` | general SSH logins | default ordinary SSH entries |
-| `F2` | jumps | `ProxyJump` / `ProxyCommand` |
-| `F3` | port forwards | `LocalForward` / `RemoteForward` / `DynamicForward` |
-| `F4` | commands | `RemoteCommand` or custom command entries |
-
-The current mode is shown in the top status line.
+Normal SSH logins, jump routes, port forwards, and `RemoteCommand` entries share one fuzzy result list. There are no tabs and no `F1`–`F4` filters.
 
 ## SSH config model
-
-`aoo` works with normal OpenSSH config files.
 
 The expected active file is:
 
@@ -65,80 +93,32 @@ The expected active file is:
 ~/.ssh/config.d/aoo_hosts/aoo.conf
 ```
 
-`~/.ssh/config` should include it, commonly via:
+`~/.ssh/config` should include:
 
 ```ssh-config
 Include ~/.ssh/config.d/aoo_hosts/*.conf
 ```
 
-The picker reads `~/.ssh/config` and follows `Include` directives. For imported SSH config entries, execution uses the exact alias:
+Imported entries execute through the exact alias:
 
 ```bash
 ssh alias-name
 ```
 
-This preserves OpenSSH behavior for `ProxyJump`, `LocalForward`, `RemoteCommand`, legacy algorithms, forwards, and other options.
+This preserves OpenSSH behavior for `ProxyJump`, forwards, `RemoteCommand`, identity files, legacy algorithms, and other options.
 
-The right preview shows a best-effort expanded multiline command for readability, but execution still uses the alias.
+## Editing and sync
 
-## Editing
+`Ctrl+E` exits the TUI and opens `$EDITOR` (`nano` fallback). The saved block is upserted into `~/.ssh/config.d/aoo_hosts/aoo.conf` between `# aoo-edit begin/end` markers.
 
-Press `e` on an entry to edit it.
-
-Behavior:
-
-1. `aoo` exits the TUI and opens `$EDITOR` (`nano` fallback).
-2. It writes an editable SSH config block generated from `ssh -G <alias>`.
-3. On save, it upserts the marked block into:
-
-```text
-~/.ssh/config.d/aoo_hosts/aoo.conf
-```
-
-The block is wrapped with markers:
-
-```ssh-config
-# aoo-edit begin alias-name
-Host alias-name
-  HostName ...
-  User ...
-# aoo-edit end alias-name
-```
-
-Generated or imported source files are not rewritten; `~/.ssh/config.d/aoo_hosts/aoo.conf` is the source of truth for user edits. If `~/.ssh/config.d/aoo_hosts` is a git repository, aoo pulls on start and commits/pushes after `e` edits or `f add`, so host sync works in both directions similarly to nb notes.
+When `~/.ssh/config.d/aoo_hosts` is a Git repository, `aoo` pulls on startup and commits/pushes after edits or `f add`.
 
 ## Display conventions
 
-The left pane is intentionally short:
-
-- only the readable entry name is shown;
-- noisy prefixes such as `ssh-` and `aoo-` are hidden in display names;
-- route suffixes are humanized, for example:
-
-```text
-ssh-pve-beria-03-netrack-netbird-emergency
-```
-
-is displayed as:
-
-```text
-pve-beria-03-netrack [netbird emergency]
-```
-
-For forwards, the remote endpoint is included in the short name:
-
-```text
-omada-chashnikovo [tunnel] [remote 10.117.100.10:443]
-```
-
-The right pane contains selected-entry details:
-
-- name;
-- description;
-- short command;
-- full command, formatted multiline when useful.
-
-Tags are currently not shown in the UI.
+- noisy `ssh-` and `aoo-` prefixes are hidden only in display names;
+- route suffixes become labels such as `[netbird emergency]`, `[jump]`, and `[tunnel]`;
+- forwards include their remote endpoint;
+- real aliases and commands remain unchanged.
 
 ## Adding entries
 
@@ -147,11 +127,9 @@ f add NAME HOST
 f add db 10.20.30.40 -user admin -p 2222 --args "-A -J jump"
 ```
 
-`Ctrl+N` in the picker also starts interactive add.
+`Ctrl+N` starts interactive creation. New entries are stored as OpenSSH blocks in `~/.ssh/config.d/aoo_hosts/aoo.conf`.
 
-New entries are written as marked OpenSSH blocks into `~/.ssh/config.d/aoo_hosts/aoo.conf`. Legacy YAML hosts under `~/.config/aoo/` are still read for compatibility, but new work should live in the SSH config repository.
-
-## Build and install from source
+## Build from source
 
 ```bash
 go test ./...
@@ -159,8 +137,9 @@ go build -o ~/.local/bin/f ./cmd/f
 ln -sf f ~/.local/bin/aoo
 ```
 
-Cross-build example for Linux amd64:
+Production builds should embed the exact commit:
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -o /tmp/aoo-f-linux-amd64 ./cmd/f
+commit=$(git rev-parse HEAD)
+go build -buildvcs=false -ldflags "-X aoo/internal/app.buildCommit=$commit" -o ~/.local/bin/f ./cmd/f
 ```

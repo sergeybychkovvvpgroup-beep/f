@@ -4,7 +4,7 @@
 
 `aoo` / `f` is a personal OpenSSH picker, not a generic notes app anymore.
 
-Primary goal: fast SSH/TUI workflow over normal OpenSSH config with a compact `sshelf`-like Bubble Tea UI.
+Primary goal: fast SSH/TUI workflow over normal OpenSSH config with a modern, frameless `fzf`-style Bubble Tea UI.
 
 Do not reintroduce separate hidden storage for imported SSH config entries. The tool should read and edit ordinary SSH config.
 
@@ -29,21 +29,14 @@ User edit action must write back to `~/.ssh/config.d/aoo_hosts/aoo.conf`, not a 
 ## Important UX decisions
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
-- `ui_mode: full | light` is persisted in `~/.config/aoo/config.yaml`; `f config ui light|full` changes it.
-- Light mode is an fzf-like compact single-line list: no alternate-screen full UI, frames, right preview, or help footer.
-- Wide layout is split-pane:
-  - top framed search/status box;
-  - left compact result list;
-  - right preview/details pane;
-  - bottom help line.
-- Theme should stay close to `sshelf`.
-- Avoid forced full background fill; transparent terminals made ANSI background painting fragile.
-- Left pane should be short and readable.
-- Right pane should contain all details:
-  - name;
-  - description;
-  - short command;
-  - full command, multiline when useful.
+- `ui_mode: compact | full-screen` is persisted in `~/.config/aoo/config.yaml`; `f config ui compact|full-screen` changes it.
+- Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
+- Both modes use the same frameless, tabless, preview-free, single-line fzf-style result list.
+- `compact` stays in the normal terminal buffer and supports `layout: top | bottom`, changed by `f config layout top|bottom`.
+- `full-screen` uses the alternate screen and always renders from the top.
+- Do not reintroduce frames, mode tabs, split panes, preview panels, or a help footer.
+- Use the fixed modern fzf-like palette in `internal/ui/theme.go`: pink prompt and match accents, muted status text, and a dark selected-row background.
+- Avoid forced full background fill outside the selected row; transparent terminals made ANSI background painting fragile.
 - Tags are currently intentionally hidden from UI.
 
 ## Search and hotkeys
@@ -72,7 +65,7 @@ ssh <alias>
 
 Do not flatten execution into a hand-built command. Running the alias preserves OpenSSH semantics for options not modeled by aoo.
 
-The right preview may show a best-effort expanded command for readability only.
+Expanded commands may be used by non-picker output, but the picker itself has no preview pane.
 
 ## Display name rules
 
@@ -103,7 +96,7 @@ Entries retain internal classification for display and preview metadata, but cla
 - `RemoteCommand` -> commands;
 - `ProxyJump`, `ProxyCommand` -> jumps.
 
-Expanded previews should include important directives:
+Expanded command generation should include important directives:
 
 - `-p` for non-default port;
 - `-J` for `ProxyJump`;
@@ -179,7 +172,7 @@ Commit and push meaningful changes to `main` after tests pass.
 
 ## Known follow-ups
 
-- Replace editor-based `e` with an inline Bubble Tea popup only if it can safely edit multiline SSH config blocks.
+- Replace editor-based `Ctrl+E` with an inline Bubble Tea popup only if it can safely edit multiline SSH config blocks.
 - Improve normalization of route/display names if more noisy aliases appear.
 - Consider frecency sorting later, but do not hide exact fuzzy-search behavior.
 - Keep `~/.ssh/config.d/aoo_hosts` consolidated; avoid adding new generated active `.conf` files unless the user explicitly asks.
