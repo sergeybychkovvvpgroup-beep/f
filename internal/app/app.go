@@ -889,6 +889,9 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 	if commit == "" {
 		return errors.New("cannot determine upgrade commit")
 	}
+	if err := validateForwardUpgrade(dir, buildCommit, commit); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 		return err
 	}

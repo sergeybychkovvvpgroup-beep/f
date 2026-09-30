@@ -2,7 +2,9 @@ package app
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -92,4 +94,53 @@ func TestRecordInstalledCommitReplacesStaleCache(t *testing.T) {
 	if !ok || got.Commit != installed || !got.CheckedAt.Equal(when) {
 		t.Fatalf("installed cache = %#v, readable=%v", got, ok)
 	}
+}
+
+func TestValidateForwardUpgradeRejectsDowngrade(t *testing.T) {
+	dir, older, newer := testUpgradeRepository(t)
+	if err := validateForwardUpgrade(dir, older, newer); err != nil {
+		t.Fatalf("forward upgrade rejected: %v", err)
+	}
+	if err := validateForwardUpgrade(dir, newer, older); err == nil || !strings.Contains(err.Error(), "non-forward") {
+		t.Fatalf("downgrade error = %v, want non-forward rejection", err)
+	}
+}
+
+func TestValidateForwardUpgradeRejectsUnknownRunningCommit(t *testing.T) {
+	dir, _, newer := testUpgradeRepository(t)
+	missing := strings.Repeat("a", 40)
+	if err := validateForwardUpgrade(dir, missing, newer); err == nil || !strings.Contains(err.Error(), "not present") {
+		t.Fatalf("missing commit error = %v, want not-present rejection", err)
+	}
+}
+
+func testUpgradeRepository(t *testing.T) (string, string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	runGitTest(t, dir, "init")
+	runGitTest(t, dir, "config", "user.name", "Test Operator")
+	runGitTest(t, dir, "config", "user.email", "operator@example.invalid")
+	path := filepath.Join(dir, "version.txt")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, dir, "add", "version.txt")
+	runGitTest(t, dir, "commit", "-m", "old")
+	older := strings.TrimSpace(runGitTest(t, dir, "rev-parse", "HEAD"))
+	if err := os.WriteFile(path, []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, dir, "commit", "-am", "new")
+	newer := strings.TrimSpace(runGitTest(t, dir, "rev-parse", "HEAD"))
+	return dir, older, newer
+}
+
+func runGitTest(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, output)
+	}
+	return string(output)
 }

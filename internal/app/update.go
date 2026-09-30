@@ -85,6 +85,28 @@ func recordInstalledCommit(path, commit string, installedAt time.Time) error {
 	return writeUpdateCache(path, updateCheckCache{CheckedAt: installedAt, Commit: strings.TrimSpace(commit)})
 }
 
+func validateForwardUpgrade(dir, currentCommit, targetCommit string) error {
+	currentCommit = strings.TrimSpace(currentCommit)
+	targetCommit = strings.TrimSpace(targetCommit)
+	if currentCommit == "" || currentCommit == "unknown" || commitsEqual(currentCommit, targetCommit) {
+		return nil
+	}
+
+	currentObject := exec.Command("git", "-C", dir, "cat-file", "-e", currentCommit+"^{commit}")
+	if err := currentObject.Run(); err != nil {
+		return fmt.Errorf("refusing update: running commit %s is not present in the update repository", shortCommit(currentCommit))
+	}
+
+	ancestor := exec.Command("git", "-C", dir, "merge-base", "--is-ancestor", currentCommit, targetCommit)
+	if err := ancestor.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return fmt.Errorf("refusing non-forward update from %s to %s", shortCommit(currentCommit), shortCommit(targetCommit))
+		}
+		return fmt.Errorf("verify update ancestry: %w", err)
+	}
+	return nil
+}
+
 func updateCachePath() (string, error) {
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {

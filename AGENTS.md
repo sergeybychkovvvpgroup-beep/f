@@ -149,7 +149,9 @@ ssh sergeyb@192.168.41.138 'sh -lc '\''install -m 0755 /tmp/f.new ~/.local/bin/f
 ## Self-update behavior
 
 - The update-check cache is valid only when its commit matches the running binary's embedded `buildCommit`.
-- If the cached commit differs from the running build, refresh remote `HEAD` instead of offering the cached commit; otherwise a freshly upgraded binary can be offered a downgrade.
+- If the cached commit differs from the running build, refresh remote `HEAD` instead of offering the cached commit.
+- Before replacing the binary, verify with Git ancestry that the running commit is present in the update checkout and is an ancestor of the target commit. Refuse missing, divergent, or older targets; a different remote SHA is not by itself proof of an upgrade.
+- Never deploy a commit until the public update repository and every required mirror resolve to that exact SHA.
 - Production builds must embed the exact Git commit with `-ldflags "-X aoo/internal/app.buildCommit=$(git rev-parse HEAD)"`.
 
 ## Git workflow
