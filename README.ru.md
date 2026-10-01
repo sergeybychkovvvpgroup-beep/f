@@ -81,7 +81,7 @@ f config layout top     # compact сверху
 Клавиши:
 
 - ввод — фильтр;
-- `↑` / `↓`, `Ctrl+K` / `Ctrl+J` — выбор;
+- `↑` / `↓`, `Ctrl+K` / `Ctrl+J` — выбор по видимому списку сверху вниз во всех layout;
 - `Enter` — запустить выбранный SSH;
 - `Ctrl+Y` / `Alt+Enter` — вывести команду без запуска;
 - `Ctrl+E` / `Alt+E` — редактировать SSH config block;

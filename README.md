@@ -74,7 +74,7 @@ f config layout top     # compact at top
 Keys:
 
 - type to filter;
-- `↑` / `↓`, `Ctrl+K` / `Ctrl+J` to move;
+- `↑` / `↓`, `Ctrl+K` / `Ctrl+J` to move through results in visual top-to-bottom order in every layout;
 - `Enter` to run the selected SSH command;
 - `Ctrl+Y` / `Alt+Enter` to print without running;
 - `Ctrl+E` / `Alt+E` to edit the selected SSH config block;

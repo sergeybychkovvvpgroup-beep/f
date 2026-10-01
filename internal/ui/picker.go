@@ -662,12 +662,6 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 	}
 
 	lines := make([]string, 0, len(visible)*maxInt(2, m.resultRowHeight()))
-	if m.isBottomLayout() && !m.options.FullScreen {
-		for i := len(rows) - 1; i >= 0; i-- {
-			lines = append(lines, rows[i].lines...)
-		}
-		return lines
-	}
 	for _, row := range rows {
 		lines = append(lines, row.lines...)
 	}
@@ -883,10 +877,6 @@ func (m *PickerModel) moveCursor(delta int) {
 		return
 	}
 	target := m.cursor + delta
-	// Bottom layout renders results bottom-up, so keys are inverted there.
-	if m.isBottomLayout() && !m.options.FullScreen {
-		target = m.cursor - delta
-	}
 	if target < 0 || target >= len(m.matches) {
 		return
 	}

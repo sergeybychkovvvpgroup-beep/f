@@ -93,6 +93,38 @@ func TestCompactBottomPlacesQueryAfterResults(t *testing.T) {
 	}
 }
 
+func TestCompactBottomDownMovesSelectionTopToBottom(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "alpha", Cmd: "ssh alpha"},
+		{Desc: "bravo", Cmd: "ssh bravo"},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 6})
+	if m.cursor != 0 {
+		t.Fatalf("initial cursor = %d, want first result", m.cursor)
+	}
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	got := updated.(PickerModel)
+	if got.cursor != 1 {
+		t.Fatalf("cursor after Down = %d, want second result", got.cursor)
+	}
+}
+
+func TestCompactBottomRendersResultsTopToBottom(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "alpha", Cmd: "ssh alpha"},
+		{Desc: "bravo", Cmd: "ssh bravo"},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 6})
+	m.width, m.height = 80, 6
+	plain := stripANSI(m.View())
+	alpha := strings.Index(plain, "alpha")
+	bravo := strings.Index(plain, "bravo")
+	if alpha < 0 || bravo < 0 || alpha > bravo {
+		t.Fatalf("compact bottom results must start at the top and continue downward: %q", plain)
+	}
+}
+
 func TestFullScreenKeepsResultsInSearchOrder(t *testing.T) {
 	entries := []notes.Entry{
 		{Desc: "alpha", Cmd: "ssh alpha"},
