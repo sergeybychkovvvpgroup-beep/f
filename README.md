@@ -51,6 +51,8 @@ f setup <ssh-config-repo-url>
 
 The installer adds `f` and the legacy `aoo` symlink. `f setup` clones the hosts repository into `~/.ssh/config.d/aoo_hosts` and ensures `~/.ssh/config` includes `~/.ssh/config.d/aoo_hosts/*.conf`.
 
+The built-in update checker uses the private Gitea repository `git@git.dawq.me:sergeyb/aoo.git` by default. Override it temporarily with `AOO_UPGRADE_REPO` when needed.
+
 To publish the current machine's existing hosts as the initial repository contents:
 
 ```bash

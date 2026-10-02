@@ -34,6 +34,22 @@ func TestShortCommit(t *testing.T) {
 	}
 }
 
+func TestDefaultUpgradeRepoUsesGitea(t *testing.T) {
+	t.Setenv("AOO_UPGRADE_REPO", "")
+	const want = "git@git.dawq.me:sergeyb/aoo.git"
+	if got := defaultUpgradeRepo(); got != want {
+		t.Fatalf("defaultUpgradeRepo = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultUpgradeRepoAllowsExplicitOverride(t *testing.T) {
+	const want = "file:///tmp/aoo-test.git"
+	t.Setenv("AOO_UPGRADE_REPO", want)
+	if got := defaultUpgradeRepo(); got != want {
+		t.Fatalf("defaultUpgradeRepo override = %q, want %q", got, want)
+	}
+}
+
 func TestUpdateCacheRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "update-check.json")
 	want := updateCheckCache{CheckedAt: time.Now().UTC().Truncate(time.Second), Commit: "abc123"}

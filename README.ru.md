@@ -50,6 +50,8 @@ f config layout top      # вверху экрана
 curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
 ```
 
+Встроенная проверка обновлений по умолчанию использует приватный Gitea-репозиторий `git@git.dawq.me:sergeyb/aoo.git`. При необходимости источник можно временно переопределить через `AOO_UPGRADE_REPO`.
+
 Затем подключи репозиторий с хостами:
 
 ```bash

@@ -927,7 +927,7 @@ func defaultUpgradeRepo() string {
 	if value := strings.TrimSpace(os.Getenv("AOO_UPGRADE_REPO")); value != "" {
 		return value
 	}
-	return "https://github.com/sergeybychkovvvpgroup-beep/f.git"
+	return "git@git.dawq.me:sergeyb/aoo.git"
 }
 
 func safeRepoURL(repoURL string) string {
