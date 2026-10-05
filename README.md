@@ -1,18 +1,20 @@
 # f
 
-`f` is a personal OpenSSH picker with a modern `fzf`-style terminal UI.
+`f` is a personal OpenSSH picker presented as a compact Bubble Tea application.
 
 It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list, and runs real `ssh`. Imported SSH entries are not copied into a private host database.
 
 ## Interface
 
-Frames, tabs, preview panes, and the former large split UI have been removed. Both sizes use the same minimal interface:
+Both sizes use one pink-accented application card with outer and inner spacing. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
 
+- title and active-category badge;
 - query line;
 - match counter;
 - single-line results;
 - colored fuzzy-match characters;
-- high-contrast selected row.
+- high-contrast selected row;
+- compact frame without tabs, preview panes, or a separate footer.
 
 Choose the size:
 

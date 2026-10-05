@@ -8,6 +8,7 @@ import (
 
 	"f/internal/notes"
 	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -36,6 +37,7 @@ type PickerModel struct {
 	syncStatus   SyncStatus
 	syncStream   <-chan SyncStatus
 	activeKind   string
+	spinner      spinner.Model
 }
 
 type syncPollMsg struct{}
@@ -53,6 +55,9 @@ func NewPicker(entries []notes.Entry, initialQuery string, theme Theme, options 
 	input.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.HelpFG))
 	input.Cursor.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.StatusWarnFG))
 	input.Cursor.SetMode(cursor.CursorStatic)
+	syncSpinner := spinner.New()
+	syncSpinner.Spinner = spinner.MiniDot
+	syncSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.StatusRunFG))
 
 	m := PickerModel{
 		input:        input,
@@ -64,6 +69,7 @@ func NewPicker(entries []notes.Entry, initialQuery string, theme Theme, options 
 		syncStatus:   options.InitialSync,
 		syncStream:   options.SyncStatusStream,
 		activeKind:   "all",
+		spinner:      syncSpinner,
 	}
 	m.refresh()
 	return m
@@ -73,6 +79,9 @@ func (m PickerModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{}
 	if m.syncStream != nil {
 		cmds = append(cmds, m.pollSyncStatus())
+	}
+	if m.syncStatus.State == SyncStateRunning {
+		cmds = append(cmds, m.spinner.Tick)
 	}
 	return tea.Batch(cmds...)
 }
@@ -98,6 +107,13 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 		}
 		return m, m.pollSyncStatus()
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		if m.syncStatus.State == SyncStateRunning {
+			return m, cmd
+		}
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "f1":
@@ -178,6 +194,7 @@ func (m PickerModel) View() string {
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
 	contentWidth := m.contentWidth()
 	effectiveHeight := m.effectiveHeight()
+	innerHeight := maxInt(4, effectiveHeight-2)
 
 	input := m.input
 	input.Width = m.inputWidth()
@@ -185,24 +202,63 @@ func (m PickerModel) View() string {
 	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)
 	body := []string{}
 	if m.shouldRenderResults() {
-		body = clipLines(m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, detailStyle), maxInt(1, effectiveHeight-2))
+		bodyLimit := maxInt(1, innerHeight-3)
+		body = m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, detailStyle)
+		if len(body) > bodyLimit {
+			body = body[:bodyLimit]
+		}
 	}
 
-	lines := make([]string, 0, effectiveHeight)
+	lines := make([]string, 0, innerHeight)
+	headerLine := m.renderHeader(contentWidth)
 	if m.isBottomLayout() && !m.options.FullScreen {
+		lines = append(lines, headerLine)
 		lines = append(lines, body...)
-		for len(lines) < maxInt(0, effectiveHeight-2) {
-			lines = append([]string{""}, lines...)
+		for len(lines) < maxInt(1, innerHeight-2) {
+			lines = append(lines, "")
 		}
 		lines = append(lines, statusLine, inputLine)
 	} else {
-		lines = append(lines, inputLine, statusLine)
+		lines = append(lines, headerLine, inputLine, statusLine)
 		lines = append(lines, body...)
-		for len(lines) < effectiveHeight {
+		for len(lines) < innerHeight {
 			lines = append(lines, "")
 		}
 	}
-	return strings.Join(normalizeRenderedLines(clipLines(lines, effectiveHeight), contentWidth), "\n")
+	content := strings.Join(normalizeRenderedLines(clipLines(lines, innerHeight), contentWidth), "\n")
+	card := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(m.theme.InputPrompt)).
+		Background(lipgloss.Color("#181825")).
+		Padding(0, 1).
+		Render(content)
+	return lipgloss.NewStyle().MarginLeft(2).Render(card)
+}
+
+func (m PickerModel) renderHeader(width int) string {
+	title := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.theme.InputPrompt)).
+		Bold(true).
+		Render("f")
+	subtitle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.theme.TitleDimFG)).
+		Render("  SSH NAVIGATOR")
+	kind := strings.ToUpper(strings.TrimSpace(m.activeKind))
+	if kind == "" {
+		kind = "ALL"
+	}
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#181825")).
+		Background(lipgloss.Color(m.theme.MatchFG)).
+		Bold(true).
+		Padding(0, 1).
+		Render(kind)
+	left := title + subtitle
+	space := width - lipgloss.Width(left) - lipgloss.Width(badge)
+	if space < 1 {
+		return truncateRunes(left, width)
+	}
+	return left + strings.Repeat(" ", space) + badge
 }
 
 func (m PickerModel) pollSyncStatus() tea.Cmd {
@@ -318,9 +374,9 @@ func (m PickerModel) offset() int {
 }
 
 func (m PickerModel) maxVisibleItems() int {
-	available := m.effectiveHeight() - 2
-	if available < 2 {
-		available = 2
+	available := m.effectiveHeight() - 5
+	if available < 1 {
+		available = 1
 	}
 	maxItems := available / m.resultRowHeight()
 	if maxItems < 2 {
@@ -372,12 +428,12 @@ func minInt(a, b int) int {
 
 func (m PickerModel) contentWidth() int {
 	if m.width <= 0 {
-		return 80
+		return 72
 	}
-	if m.width < 20 {
-		return 20
+	if m.width < 24 {
+		return 16
 	}
-	return m.width - 4
+	return m.width - 8
 }
 
 func (m PickerModel) effectiveHeight() int {
@@ -453,6 +509,9 @@ func (m PickerModel) renderSyncStatus() string {
 	label := strings.TrimSpace(m.syncStatusLabel())
 	if label == "" {
 		return ""
+	}
+	if m.syncStatus.State == SyncStateRunning {
+		label = m.spinner.View() + " " + label
 	}
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.syncStatusColor())).

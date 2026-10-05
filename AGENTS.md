@@ -4,7 +4,7 @@
 
 `f` is a personal OpenSSH picker, not a generic notes app anymore.
 
-Primary goal: fast SSH/TUI workflow over normal OpenSSH config with a modern, frameless `fzf`-style Bubble Tea UI.
+Primary goal: fast SSH/TUI workflow over normal OpenSSH config with a modern Bubble Tea mini-application UI.
 
 Do not reintroduce separate hidden storage for imported SSH config entries. The tool should read and edit ordinary SSH config.
 
@@ -32,11 +32,11 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
-- `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. The frameless picker always shows its single-line result list.
-- Both modes use the same frameless, tabless, preview-free, single-line fzf-style result list.
+- `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. The picker always shows its single-line result list.
+- Both modes use the same rounded, pink-accented application card with horizontal margins, title, active-category badge, tabless preview-free results, and Bubbles `textinput`/`spinner` components.
 - `compact` stays in the normal terminal buffer and supports `layout: top | bottom`, changed by `f config layout top|bottom`.
 - `full-screen` uses the alternate screen and always renders from the top.
-- Do not reintroduce frames, mode tabs, split panes, preview panels, or a help footer.
+- Keep the rounded application frame; do not add mode tabs, split panes, preview panels, or a separate help footer.
 - Use the fixed modern fzf-like palette in `internal/ui/theme.go`: pink prompt and match accents, muted status text, and a dark selected-row background.
 - Avoid forced full background fill outside the selected row; transparent terminals made ANSI background painting fragile.
 - Tags are currently intentionally hidden from UI.

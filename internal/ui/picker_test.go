@@ -58,18 +58,36 @@ func TestShortQueryDoesNotRenderEllipsis(t *testing.T) {
 	}
 }
 
-func TestPickerViewOmitsFramesTabsPreviewAndHelp(t *testing.T) {
+func TestPickerViewUsesBubbleTeaAppCard(t *testing.T) {
 	m := NewPicker(nil, "prod", DefaultTheme(), Options{Height: 8})
 	m.width = 100
 	m.height = 8
-	view := m.View()
-	for _, forbidden := range []string{"enter ssh", "┌", "┐", "full command"} {
+	view := stripANSI(m.View())
+	for _, required := range []string{"╭", "╰", "f", "SSH NAVIGATOR", "F1 all"} {
+		if !strings.Contains(view, required) {
+			t.Fatalf("app card is missing %q: %q", required, view)
+		}
+	}
+	for _, forbidden := range []string{"enter ssh", "full command"} {
 		if strings.Contains(view, forbidden) {
-			t.Fatalf("fzf view contains obsolete chrome %q: %q", forbidden, view)
+			t.Fatalf("app card contains obsolete chrome %q: %q", forbidden, view)
 		}
 	}
 	if !strings.Contains(view, "> prod") || !strings.Contains(view, "all") {
-		t.Fatalf("fzf view is missing query or compact status: %q", view)
+		t.Fatalf("app card is missing query or compact status: %q", view)
+	}
+}
+
+func TestPickerAppCardHasHorizontalMargin(t *testing.T) {
+	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 10})
+	m.width, m.height = 80, 10
+	for _, line := range strings.Split(stripANSI(m.View()), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if !strings.HasPrefix(line, "  ") {
+			t.Fatalf("card line has no two-cell margin: %q", line)
+		}
 	}
 }
 
@@ -85,8 +103,8 @@ func TestCompactTopPlacesQueryBeforeResults(t *testing.T) {
 
 func TestCompactBottomPlacesQueryAfterResults(t *testing.T) {
 	entries := []notes.Entry{{Desc: "server", Cmd: "ssh server"}}
-	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 6})
-	m.width, m.height = 80, 6
+	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 7})
+	m.width, m.height = 80, 7
 	plain := stripANSI(m.View())
 	if strings.LastIndex(plain, "> ") < strings.Index(plain, "server") {
 		t.Fatalf("bottom layout must place query after results: %q", plain)
@@ -115,8 +133,8 @@ func TestCompactBottomRendersResultsTopToBottom(t *testing.T) {
 		{Desc: "alpha", Cmd: "ssh alpha"},
 		{Desc: "bravo", Cmd: "ssh bravo"},
 	}
-	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 6})
-	m.width, m.height = 80, 6
+	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 7})
+	m.width, m.height = 80, 7
 	plain := stripANSI(m.View())
 	alpha := strings.Index(plain, "alpha")
 	bravo := strings.Index(plain, "bravo")
@@ -216,6 +234,13 @@ func TestPickerStatusShowsFunctionKeyCategoryLegend(t *testing.T) {
 	}
 	if got := len(strings.Split(plain, "\n")); got != 8 {
 		t.Fatalf("legend changed picker height to %d lines, want 8", got)
+	}
+}
+
+func TestRunningSyncUsesBubblesSpinner(t *testing.T) {
+	m := NewPicker(nil, "", DefaultTheme(), Options{InitialSync: SyncStatus{State: SyncStateRunning}})
+	if got := stripANSI(m.renderSyncStatus()); !strings.Contains(got, "⠋") || !strings.Contains(got, "sync") {
+		t.Fatalf("running sync status does not use spinner bubble: %q", got)
 	}
 }
 
