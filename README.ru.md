@@ -47,6 +47,10 @@ f config address off     # вернуться к однострочному сп
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
+### Compact, top с адресами
+
+![Compact picker с приглушёнными SSH-адресами](docs/screenshots/compact-top-address.png)
+
 ### Full-screen
 
 ![Full-screen picker](docs/screenshots/full-screen.png)

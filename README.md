@@ -47,6 +47,10 @@ Legacy config values migrate automatically: `light` → `compact`, `full` → `f
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
+### Compact, top with address rows
+
+![Compact picker with muted SSH addresses](docs/screenshots/compact-top-address.png)
+
 ### Full-screen
 
 ![Full-screen picker](docs/screenshots/full-screen.png)
