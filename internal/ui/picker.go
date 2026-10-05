@@ -187,8 +187,7 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m PickerModel) View() string {
 	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.RowFG))
 	selectedStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.theme.SelectedFG)).
-		Background(lipgloss.Color(m.theme.SelectedBG)).
+		Foreground(lipgloss.Color(m.theme.MatchFG)).
 		Bold(true)
 	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
@@ -198,7 +197,10 @@ func (m PickerModel) View() string {
 
 	input := m.input
 	input.Width = m.inputWidth()
-	inputLine := truncateRunes(input.View(), contentWidth)
+	inputLine := lipgloss.NewStyle().
+		Background(lipgloss.Color("#202027")).
+		Width(contentWidth).
+		Render(truncateRunes(input.View(), contentWidth))
 	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)
 	body := []string{}
 	if m.shouldRenderResults() {
@@ -217,48 +219,48 @@ func (m PickerModel) View() string {
 		for len(lines) < maxInt(1, innerHeight-2) {
 			lines = append(lines, "")
 		}
-		lines = append(lines, statusLine, inputLine)
+		lines = append(lines, inputLine, statusLine)
 	} else {
-		lines = append(lines, headerLine, inputLine, statusLine)
+		lines = append(lines, headerLine, inputLine)
 		lines = append(lines, body...)
-		for len(lines) < innerHeight {
+		for len(lines) < innerHeight-1 {
 			lines = append(lines, "")
 		}
+		lines = append(lines, statusLine)
 	}
 	content := strings.Join(normalizeRenderedLines(clipLines(lines, innerHeight), contentWidth), "\n")
 	card := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color(m.theme.InputPrompt)).
-		Background(lipgloss.Color("#181825")).
-		Padding(0, 1).
+		Background(lipgloss.Color("#171717")).
+		Padding(1, 3).
 		Render(content)
 	return lipgloss.NewStyle().MarginLeft(m.horizontalMargin()).Render(card)
 }
 
 func (m PickerModel) renderHeader(width int) string {
-	title := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.theme.InputPrompt)).
-		Bold(true).
-		Render("f")
-	subtitle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(m.theme.TitleDimFG)).
-		Render("  SSH NAVIGATOR")
-	kind := strings.ToUpper(strings.TrimSpace(m.activeKind))
-	if kind == "" {
-		kind = "ALL"
+	label := map[string]string{
+		"all":  "SSH",
+		"host": "HOSTS",
+		"cmd":  "COMMANDS",
+		"fwd":  "FORWARDS",
+		"jump": "JUMPS",
+	}[m.activeKind]
+	if label == "" {
+		label = "SSH"
 	}
 	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#181825")).
-		Background(lipgloss.Color(m.theme.MatchFG)).
+		Foreground(lipgloss.Color("#171717")).
+		Background(lipgloss.Color(m.theme.InputPrompt)).
 		Bold(true).
 		Padding(0, 1).
-		Render(kind)
-	left := title + subtitle
-	space := width - lipgloss.Width(left) - lipgloss.Width(badge)
-	if space < 1 {
-		return truncateRunes(left, width)
+		Render(label)
+	meta := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(m.theme.TitleDimFG)).
+		Render(fmt.Sprintf("  %d / %d", len(m.matches), len(m.allEntries)))
+	left := badge + meta
+	if sync := m.renderSyncStatus(); sync != "" {
+		left += lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG)).Render("  ·  ") + sync
 	}
-	return left + strings.Repeat(" ", space) + badge
+	return truncateRunes(left, width)
 }
 
 func (m PickerModel) pollSyncStatus() tea.Cmd {
@@ -427,7 +429,7 @@ func minInt(a, b int) int {
 }
 
 func (m PickerModel) contentWidth() int {
-	return maxInt(16, m.cardWidth()-4)
+	return maxInt(16, m.cardWidth()-6)
 }
 
 func (m PickerModel) cardWidth() int {
@@ -438,7 +440,7 @@ func (m PickerModel) cardWidth() int {
 	if available < 20 {
 		return maxInt(8, m.width)
 	}
-	return minInt(100, available)
+	return minInt(96, available)
 }
 
 func (m PickerModel) horizontalMargin() int {
@@ -525,12 +527,24 @@ func (m PickerModel) statusLine() string {
 }
 
 func (m PickerModel) renderStatusBar(baseStyle lipgloss.Style) string {
-	line := baseStyle.Render(m.statusLine())
-	if sync := m.renderSyncStatus(); sync != "" {
-		line += baseStyle.Render("  ·  ") + sync
+	items := []struct {
+		key, label, kind string
+	}{
+		{"F1", "all", "all"},
+		{"F2", "hosts", "host"},
+		{"F3", "commands", "cmd"},
+		{"F4", "forwards", "fwd"},
+		{"F5", "jumps", "jump"},
 	}
-	line += baseStyle.Render("  ·  F1 all  F2 hosts  F3 commands  F4 forwards  F5 jumps")
-	return line
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		style := baseStyle
+		if m.activeKind == item.kind || (m.activeKind == "" && item.kind == "all") {
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+		}
+		parts = append(parts, style.Render(item.key+" "+item.label))
+	}
+	return strings.Join(parts, baseStyle.Render("  •  "))
 }
 
 func (m PickerModel) renderSyncStatus() string {

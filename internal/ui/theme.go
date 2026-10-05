@@ -40,7 +40,7 @@ func DefaultTheme() Theme {
 		MatchFG:      "#f5c2e7",
 		RowFG:        "#cdd6f4",
 		DividerFG:    "#45475a",
-		SelectedMark: ">",
+		SelectedMark: "│",
 		StatusOKFG:   "#a6e3a1",
 		StatusWarnFG: "#f9e2af",
 		StatusErrFG:  "#f38ba8",

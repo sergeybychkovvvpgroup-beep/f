@@ -59,23 +59,41 @@ func TestShortQueryDoesNotRenderEllipsis(t *testing.T) {
 	}
 }
 
-func TestPickerViewUsesBubbleTeaAppCard(t *testing.T) {
+func TestPickerViewUsesMinimalBubbleTeaPanel(t *testing.T) {
 	m := NewPicker(nil, "prod", DefaultTheme(), Options{Height: 8})
 	m.width = 100
 	m.height = 8
 	view := stripANSI(m.View())
-	for _, required := range []string{"╭", "╰", "f", "SSH NAVIGATOR", "F1 all"} {
+	for _, required := range []string{"SSH", "F1 all"} {
 		if !strings.Contains(view, required) {
-			t.Fatalf("app card is missing %q: %q", required, view)
+			t.Fatalf("minimal panel is missing %q: %q", required, view)
 		}
 	}
-	for _, forbidden := range []string{"enter ssh", "full command"} {
+	for _, forbidden := range []string{"╭", "╰", "SSH NAVIGATOR", "enter ssh", "full command"} {
 		if strings.Contains(view, forbidden) {
-			t.Fatalf("app card contains obsolete chrome %q: %q", forbidden, view)
+			t.Fatalf("minimal panel contains obsolete chrome %q: %q", forbidden, view)
 		}
 	}
 	if !strings.Contains(view, "> prod") || !strings.Contains(view, "all") {
-		t.Fatalf("app card is missing query or compact status: %q", view)
+		t.Fatalf("minimal panel is missing query or compact status: %q", view)
+	}
+}
+
+func TestSelectedRowUsesSlimAccentMarker(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "server", Kind: "host", Actions: []notes.Action{{Cmd: "ssh server"}}}}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	if plain := stripANSI(m.View()); !strings.Contains(plain, "│ server") {
+		t.Fatalf("selected row does not use a slim accent marker: %q", plain)
+	}
+}
+
+func TestCategoryBadgeUsesHumanLabel(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router status"}}}}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyF3})
+	plain := stripANSI(updated.(PickerModel).View())
+	if !strings.Contains(plain, "COMMANDS") || strings.Contains(plain, "SSH NAVIGATOR") {
+		t.Fatalf("category badge is not reference-style: %q", plain)
 	}
 }
 
@@ -101,8 +119,8 @@ func TestPickerCardIsCenteredAndWidthCappedOnWideTerminal(t *testing.T) {
 	if leftMargin < 20 {
 		t.Fatalf("wide terminal card is not centered: left margin=%d, line=%q", leftMargin, top)
 	}
-	if cardWidth > 100 {
-		t.Fatalf("wide terminal card width=%d, want at most 100", cardWidth)
+	if cardWidth > 96 {
+		t.Fatalf("wide terminal panel width=%d, want at most 96", cardWidth)
 	}
 }
 
