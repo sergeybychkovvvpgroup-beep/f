@@ -43,7 +43,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 ## Search and hotkeys
 
-All SSH logins, jumps, forwards, and command entries share one fuzzy-search result set. Do not add mode tabs or `F1`–`F4` filtering.
+Plain text searches SSH logins, jumps, forwards, and command entries together. Category bindings filter the current result set without clearing the query: `F1` all, `F2` hosts, `F3` commands, `F4` forwards, `F5` jumps. Do not add mode tabs or visible row prefixes.
 
 Keys:
 

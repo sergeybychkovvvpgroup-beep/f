@@ -35,6 +35,7 @@ type PickerModel struct {
 	theme        Theme
 	syncStatus   SyncStatus
 	syncStream   <-chan SyncStatus
+	activeKind   string
 }
 
 type syncPollMsg struct{}
@@ -62,6 +63,7 @@ func NewPicker(entries []notes.Entry, initialQuery string, theme Theme, options 
 		previewCache: make(map[string]notes.PreviewMatch),
 		syncStatus:   options.InitialSync,
 		syncStream:   options.SyncStatusStream,
+		activeKind:   "all",
 	}
 	m.refresh()
 	return m
@@ -98,6 +100,26 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.pollSyncStatus()
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "f1":
+			m.activeKind = "all"
+			m.refresh()
+			return m, nil
+		case "f2":
+			m.activeKind = "host"
+			m.refresh()
+			return m, nil
+		case "f3":
+			m.activeKind = "cmd"
+			m.refresh()
+			return m, nil
+		case "f4":
+			m.activeKind = "fwd"
+			m.refresh()
+			return m, nil
+		case "f5":
+			m.activeKind = "jump"
+			m.refresh()
+			return m, nil
 		case "ctrl+c":
 			m.cancelled = true
 			return m, tea.Quit
@@ -222,7 +244,7 @@ func (m PickerModel) shouldRenderResults() bool {
 }
 
 func (m *PickerModel) refresh() {
-	m.entries = m.allEntries
+	m.entries = filterEntriesByKind(m.allEntries, m.activeKind)
 	m.matches = notes.Filter(m.entries, m.input.Value())
 	if m.cursor >= len(m.matches) {
 		m.cursor = len(m.matches) - 1
@@ -232,6 +254,22 @@ func (m *PickerModel) refresh() {
 	}
 	m.refreshPreview()
 	m.clampPreviewHit()
+}
+
+func filterEntriesByKind(entries []notes.Entry, kind string) []notes.Entry {
+	if kind == "" || kind == "all" {
+		return entries
+	}
+	filtered := make([]notes.Entry, 0, len(entries))
+	for _, entry := range entries {
+		for _, entryKind := range strings.Split(entry.Kind, "/") {
+			if strings.TrimSpace(entryKind) == kind {
+				filtered = append(filtered, entry)
+				break
+			}
+		}
+	}
+	return filtered
 }
 
 func (m *PickerModel) refreshPreview() {
@@ -386,7 +424,11 @@ func (m PickerModel) twoLineResults() bool {
 }
 
 func (m PickerModel) statusLine() string {
-	status := fmt.Sprintf("all  %d/%d", len(m.matches), len(m.entries))
+	kind := m.activeKind
+	if kind == "" {
+		kind = "all"
+	}
+	status := fmt.Sprintf("%s  %d/%d", kind, len(m.matches), len(m.allEntries))
 	if len(m.matches) == 0 {
 		return status
 	}
@@ -403,7 +445,7 @@ func (m PickerModel) renderStatusBar(baseStyle lipgloss.Style) string {
 	if sync := m.renderSyncStatus(); sync != "" {
 		line += baseStyle.Render("  ·  ") + sync
 	}
-	line += baseStyle.Render("  ·  host=hosts  cmd=commands  fwd=forwards  jump=jumps")
+	line += baseStyle.Render("  ·  F1 all  F2 hosts  F3 commands  F4 forwards  F5 jumps")
 	return line
 }
 
@@ -675,19 +717,14 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 		prefix = m.theme.SelectedMark + " "
 	}
 	rowWidth := maxInt(12, width)
-	kindText := ""
-	if kind := strings.TrimSpace(entry.Kind); kind != "" {
-		kindText = kind + ": "
-	}
-	kindWidth := utf8.RuneCountInString(kindText)
-	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix)-kindWidth)
+	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix))
 	labelText := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
 	if m.twoLineResults() {
 		labelText = truncateRunes(labelText, contentWidth)
 		if selected {
-			return selectedStyle.Render(prefix) + m.renderKindPrefix(kindText) + selectedStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)-kindWidth))
+			return selectedStyle.Render(prefix) + selectedStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)))
 		}
-		return rowStyle.Render(prefix) + m.renderKindPrefix(kindText) + rowStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)-kindWidth))
+		return rowStyle.Render(prefix) + rowStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)))
 	}
 
 	detailText := match.Detail
@@ -711,8 +748,8 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	query := strings.TrimSpace(m.input.Value())
 	if selected {
 		matchStyle := selectedStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := selectedStyle.Render(prefix) + m.renderKindPrefix(kindText) + renderFuzzyText(combined, query, selectedStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+kindText+combined)
+		rendered := selectedStyle.Render(prefix) + renderFuzzyText(combined, query, selectedStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
 		if padding > 0 {
 			rendered += selectedStyle.Render(strings.Repeat(" ", padding))
 		}
@@ -721,8 +758,8 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 
 	if secondary == "" || combined == primary {
 		matchStyle := rowStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := rowStyle.Render(prefix) + m.renderKindPrefix(kindText) + renderFuzzyText(combined, query, rowStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+kindText+combined)
+		rendered := rowStyle.Render(prefix) + renderFuzzyText(combined, query, rowStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
 		if padding > 0 {
 			rendered += rowStyle.Render(strings.Repeat(" ", padding))
 		}
@@ -736,22 +773,11 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	}
 	first := string(combinedRunes[:split])
 	second := string(combinedRunes[split:])
-	visible := utf8.RuneCountInString(prefix+kindText+first) + utf8.RuneCountInString(second)
+	visible := utf8.RuneCountInString(prefix+first) + utf8.RuneCountInString(second)
 	if visible < rowWidth {
 		second += strings.Repeat(" ", rowWidth-visible)
 	}
-	return rowStyle.Render(prefix) + m.renderKindPrefix(kindText) + rowStyle.Render(first) + detailStyle.Render(second)
-}
-
-func (m PickerModel) renderKindPrefix(kindText string) string {
-	if kindText == "" {
-		return ""
-	}
-	return m.kindPrefixStyle().Render(kindText)
-}
-
-func (m PickerModel) kindPrefixStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
+	return rowStyle.Render(prefix) + rowStyle.Render(first) + detailStyle.Render(second)
 }
 
 func renderFuzzyText(text, query string, baseStyle, matchStyle lipgloss.Style) string {

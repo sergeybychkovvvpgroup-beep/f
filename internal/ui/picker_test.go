@@ -6,7 +6,6 @@ import (
 
 	"f/internal/notes"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 func TestPickerAlwaysUsesSingleLineResults(t *testing.T) {
@@ -64,7 +63,7 @@ func TestPickerViewOmitsFramesTabsPreviewAndHelp(t *testing.T) {
 	m.width = 100
 	m.height = 8
 	view := m.View()
-	for _, forbidden := range []string{"enter ssh", "┌", "┐", "full command", "F1", "F2", "F3", "F4"} {
+	for _, forbidden := range []string{"enter ssh", "┌", "┐", "full command"} {
 		if strings.Contains(view, forbidden) {
 			t.Fatalf("fzf view contains obsolete chrome %q: %q", forbidden, view)
 		}
@@ -141,23 +140,20 @@ func TestFullScreenKeepsResultsInSearchOrder(t *testing.T) {
 	}
 }
 
-func TestPickerSearchesAllEntryKindsTogether(t *testing.T) {
+func TestPickerSearchesAllEntryKindsWithoutPrefix(t *testing.T) {
 	entries := []notes.Entry{
-		{Desc: "login", Cmd: "ssh login", Mode: "general"},
-		{Desc: "jump", Cmd: "ssh jump", Mode: "jumps"},
-		{Desc: "forward", Cmd: "ssh forward", Mode: "forwards"},
-		{Desc: "command", Cmd: "ssh command", Mode: "commands"},
+		{Desc: "router login", Kind: "host", Actions: []notes.Action{{Cmd: "ssh router"}}},
+		{Desc: "router status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router show version"}}},
+		{Desc: "router admin", Kind: "fwd", Actions: []notes.Action{{Cmd: "ssh router-forward"}}},
+		{Desc: "router production", Kind: "jump", Actions: []notes.Action{{Cmd: "ssh router-production"}}},
 	}
-	m := NewPicker(entries, "", DefaultTheme(), Options{})
+	m := NewPicker(entries, "router", DefaultTheme(), Options{})
 	if got := len(m.matches); got != len(entries) {
-		t.Fatalf("picker contains %d/%d entries; all entry kinds must share one search", got, len(entries))
-	}
-	if strings.Contains(m.statusLine(), "F1") {
-		t.Fatalf("unified status still exposes mode tabs: %q", m.statusLine())
+		t.Fatalf("plain query contains %d/%d kinds; want search across all categories", got, len(entries))
 	}
 }
 
-func TestPickerRendersSearchableEntryKindPrefixes(t *testing.T) {
+func TestPickerDoesNotRenderKindPrefixes(t *testing.T) {
 	entries := []notes.Entry{
 		{Desc: "server", Kind: "host", Actions: []notes.Action{{Cmd: "ssh server"}}},
 		{Desc: "status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router show version"}}},
@@ -168,49 +164,58 @@ func TestPickerRendersSearchableEntryKindPrefixes(t *testing.T) {
 	m.width, m.height = 100, 8
 	plain := stripANSI(m.View())
 	for _, prefix := range []string{"host:", "cmd:", "fwd:", "jump:"} {
-		if !strings.Contains(plain, prefix) {
-			t.Fatalf("picker is missing %q prefix: %q", prefix, plain)
+		if strings.Contains(plain, prefix) {
+			t.Fatalf("picker still renders obsolete %q prefix: %q", prefix, plain)
 		}
-	}
-
-	filtered := NewPicker(entries, "cmd", DefaultTheme(), Options{Height: 8})
-	if len(filtered.matches) != 1 || filtered.matches[0].Entry.Kind != "cmd" {
-		t.Fatalf("cmd search returned %+v, want only command entry", filtered.matches)
 	}
 }
 
-func TestPickerStatusShowsCompactKindLegend(t *testing.T) {
+func TestFunctionKeysFilterCategoriesWithoutChangingQuery(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "router login", Kind: "host", Actions: []notes.Action{{Cmd: "ssh router"}}},
+		{Desc: "router status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router show version"}}},
+		{Desc: "router admin", Kind: "fwd", Actions: []notes.Action{{Cmd: "ssh router-forward"}}},
+		{Desc: "router production", Kind: "jump", Actions: []notes.Action{{Cmd: "ssh router-production"}}},
+		{Desc: "router chained", Kind: "cmd/jump", Actions: []notes.Action{{Cmd: "ssh router-chained"}}},
+	}
+	tests := []struct {
+		key  tea.KeyType
+		kind string
+		want int
+	}{
+		{tea.KeyF1, "all", 5},
+		{tea.KeyF2, "host", 1},
+		{tea.KeyF3, "cmd", 2},
+		{tea.KeyF4, "fwd", 1},
+		{tea.KeyF5, "jump", 2},
+	}
+	for _, tt := range tests {
+		m := NewPicker(entries, "router", DefaultTheme(), Options{})
+		updated, _ := m.Update(tea.KeyMsg{Type: tt.key})
+		got := updated.(PickerModel)
+		if got.activeKind != tt.kind {
+			t.Fatalf("%s selected %q, want %q", tt.key, got.activeKind, tt.kind)
+		}
+		if len(got.matches) != tt.want {
+			t.Fatalf("%s returned %d matches, want %d", tt.key, len(got.matches), tt.want)
+		}
+		if got.Query() != "router" {
+			t.Fatalf("%s changed query to %q", tt.key, got.Query())
+		}
+	}
+}
+
+func TestPickerStatusShowsFunctionKeyCategoryLegend(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
 	m.width, m.height = 100, 8
 	plain := stripANSI(m.View())
-	for _, item := range []string{"host=hosts", "cmd=commands", "fwd=forwards", "jump=jumps"} {
+	for _, item := range []string{"F1 all", "F2 hosts", "F3 commands", "F4 forwards", "F5 jumps"} {
 		if !strings.Contains(plain, item) {
-			t.Fatalf("kind legend is missing %q: %q", item, plain)
+			t.Fatalf("category legend is missing %q: %q", item, plain)
 		}
 	}
 	if got := len(strings.Split(plain, "\n")); got != 8 {
 		t.Fatalf("legend changed picker height to %d lines, want 8", got)
-	}
-}
-
-func TestKindPrefixUsesMutedStyle(t *testing.T) {
-	entry := notes.Entry{Desc: "status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router show version"}}}
-	m := NewPicker([]notes.Entry{entry}, "cmd", DefaultTheme(), Options{Height: 6})
-	if got, want := m.kindPrefixStyle().GetForeground(), lipgloss.Color(m.theme.TitleDimFG); got != want {
-		t.Fatalf("kind prefix foreground = %v, want muted %v", got, want)
-	}
-}
-
-func TestFunctionKeysDoNotFilterUnifiedSearch(t *testing.T) {
-	entries := []notes.Entry{
-		{Desc: "login", Cmd: "ssh login", Mode: "general"},
-		{Desc: "forward", Cmd: "ssh forward", Mode: "forwards"},
-	}
-	m := NewPicker(entries, "", DefaultTheme(), Options{})
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyF2})
-	got := updated.(PickerModel)
-	if len(got.matches) != len(entries) {
-		t.Fatalf("F2 filtered unified search to %d/%d entries", len(got.matches), len(entries))
 	}
 }
 

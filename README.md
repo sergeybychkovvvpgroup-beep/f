@@ -85,9 +85,9 @@ Keys:
 
 ## Unified search
 
-Normal SSH logins, jump routes, port forwards, and `RemoteCommand` entries share one fuzzy result list. There are no tabs and no `F1`–`F4` filters.
+An ordinary query searches SSH logins, jump routes, port forwards, and `RemoteCommand` entries together; no prefix is required.
 
-Each row has a searchable kind prefix: `host:`, `cmd:`, `fwd:`, or `jump:`. Combined entries use labels such as `cmd/jump:`. A muted one-line legend in the status bar explains the prefixes without adding a help panel.
+Category bindings filter without clearing the query: `F1` all, `F2` hosts, `F3` commands, `F4` forwards, and `F5` jumps. A muted one-line legend is shown in the status bar.
 
 ## SSH config model
 
