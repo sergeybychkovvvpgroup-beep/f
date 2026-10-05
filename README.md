@@ -6,7 +6,7 @@ It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list,
 
 ## Interface
 
-Both sizes use a calm dark panel without a decorative outer border. In compact mode it is centered, width-capped, and automatically shrinks vertically when few results remain. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
+Both sizes use a flat interface without an outer frame or background container. In compact mode it stays near the left edge with a small margin, remains width-capped, and uses exactly as many rows as the current results need. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
 
 - small colored active-category badge and counter;
 - query line;

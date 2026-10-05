@@ -78,7 +78,7 @@ func legacyConfigPath() (string, error) {
 func DefaultFile() File {
 	return File{
 		UIMode:       "compact",
-		Layout:       "bottom",
+		Layout:       "top",
 		PickerHeight: 14,
 	}
 }

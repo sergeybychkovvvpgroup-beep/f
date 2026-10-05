@@ -97,7 +97,7 @@ func TestCategoryBadgeUsesHumanLabel(t *testing.T) {
 	}
 }
 
-func TestPickerAppCardHasHorizontalMargin(t *testing.T) {
+func TestPickerPanelHasSmallLeftMargin(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 10})
 	m.width, m.height = 80, 10
 	for _, line := range strings.Split(stripANSI(m.View()), "\n") {
@@ -105,22 +105,22 @@ func TestPickerAppCardHasHorizontalMargin(t *testing.T) {
 			continue
 		}
 		if !strings.HasPrefix(line, "  ") {
-			t.Fatalf("card line has no two-cell margin: %q", line)
+			t.Fatalf("panel line has no two-cell margin: %q", line)
 		}
 	}
 }
 
-func TestPickerCardIsCenteredAndWidthCappedOnWideTerminal(t *testing.T) {
+func TestPickerPanelStaysAtLeftAndWidthCappedOnWideTerminal(t *testing.T) {
 	m := NewPicker([]notes.Entry{{Desc: "server", Kind: "host", Actions: []notes.Action{{Cmd: "ssh server"}}}}, "", DefaultTheme(), Options{Height: 14})
 	m.width, m.height = 160, 14
 	top := strings.Split(stripANSI(m.View()), "\n")[0]
 	leftMargin := len(top) - len(strings.TrimLeft(top, " "))
-	cardWidth := utf8.RuneCountInString(strings.TrimSpace(top))
-	if leftMargin < 20 {
-		t.Fatalf("wide terminal card is not centered: left margin=%d, line=%q", leftMargin, top)
+	panelWidth := utf8.RuneCountInString(strings.TrimSpace(top))
+	if leftMargin != 3 {
+		t.Fatalf("wide terminal panel visible left margin=%d, want 3 including badge padding: %q", leftMargin, top)
 	}
-	if cardWidth > 96 {
-		t.Fatalf("wide terminal panel width=%d, want at most 96", cardWidth)
+	if panelWidth > 96 {
+		t.Fatalf("wide terminal panel width=%d, want at most 96", panelWidth)
 	}
 }
 
@@ -131,12 +131,17 @@ func TestCompactPickerShrinksToSmallFilteredResultSet(t *testing.T) {
 		{Desc: "three", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh three"}}},
 		{Desc: "four", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh four"}}},
 	}
-	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 14})
+	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "top", Height: 14})
 	m.width, m.height = 160, 14
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyF3})
 	lines := strings.Split(stripANSI(updated.(PickerModel).View()), "\n")
-	if len(lines) != 9 {
-		t.Fatalf("four-result compact card has %d lines, want 9 without empty vertical space", len(lines))
+	if len(lines) != 7 {
+		t.Fatalf("four-result compact panel has %d lines, want 7 without empty vertical space", len(lines))
+	}
+	for _, line := range lines {
+		if strings.TrimSpace(line) == "" {
+			t.Fatalf("flat compact picker contains an empty gap: %q", strings.Join(lines, "\\n"))
+		}
 	}
 }
 
@@ -281,8 +286,8 @@ func TestPickerStatusShowsFunctionKeyCategoryLegend(t *testing.T) {
 			t.Fatalf("category legend is missing %q: %q", item, plain)
 		}
 	}
-	if got := len(strings.Split(plain, "\n")); got != 8 {
-		t.Fatalf("legend changed picker height to %d lines, want 8", got)
+	if got := len(strings.Split(plain, "\n")); got != 4 {
+		t.Fatalf("empty compact picker has %d lines, want 4 without filler", got)
 	}
 }
 

@@ -192,8 +192,6 @@ func (m PickerModel) View() string {
 	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
 	contentWidth := m.contentWidth()
-	effectiveHeight := m.viewHeight()
-	innerHeight := maxInt(4, effectiveHeight-2)
 
 	input := m.input
 	input.Width = m.inputWidth()
@@ -204,36 +202,29 @@ func (m PickerModel) View() string {
 	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)
 	body := []string{}
 	if m.shouldRenderResults() {
-		bodyLimit := maxInt(1, innerHeight-3)
 		body = m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, detailStyle)
-		if len(body) > bodyLimit {
-			body = body[:bodyLimit]
+		limit := m.maxVisibleItems()
+		if len(body) > limit {
+			body = body[:limit]
 		}
 	}
 
-	lines := make([]string, 0, innerHeight)
-	headerLine := m.renderHeader(contentWidth)
+	lines := []string{m.renderHeader(contentWidth)}
 	if m.isBottomLayout() && !m.options.FullScreen {
-		lines = append(lines, headerLine)
 		lines = append(lines, body...)
-		for len(lines) < maxInt(1, innerHeight-2) {
-			lines = append(lines, "")
-		}
 		lines = append(lines, inputLine, statusLine)
 	} else {
-		lines = append(lines, headerLine, inputLine)
+		lines = append(lines, inputLine)
 		lines = append(lines, body...)
-		for len(lines) < innerHeight-1 {
-			lines = append(lines, "")
-		}
 		lines = append(lines, statusLine)
 	}
-	content := strings.Join(normalizeRenderedLines(clipLines(lines, innerHeight), contentWidth), "\n")
-	card := lipgloss.NewStyle().
-		Background(lipgloss.Color("#171717")).
-		Padding(1, 3).
-		Render(content)
-	return lipgloss.NewStyle().MarginLeft(m.horizontalMargin()).Render(card)
+	if m.options.FullScreen {
+		for len(lines) < m.effectiveHeight() {
+			lines = append(lines, "")
+		}
+	}
+	content := strings.Join(clipLines(lines, m.effectiveHeight()), "\n")
+	return lipgloss.NewStyle().MarginLeft(2).Render(content)
 }
 
 func (m PickerModel) renderHeader(width int) string {

@@ -50,6 +50,12 @@ func TestDefaultUIModeIsCompact(t *testing.T) {
 	}
 }
 
+func TestDefaultCompactLayoutIsTop(t *testing.T) {
+	if got := DefaultFile().Layout; got != "top" {
+		t.Fatalf("default layout = %q, want top", got)
+	}
+}
+
 func TestLoadMigratesLightUIModeToCompact(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	t.Setenv("AOO_CONFIG_FILE", path)
