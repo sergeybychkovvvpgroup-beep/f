@@ -54,7 +54,7 @@ func NewPicker(entries []notes.Entry, initialQuery string, theme Theme, options 
 	input.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.InputPrompt)).Bold(true)
 	input.PlaceholderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.HelpFG))
 	input.Cursor.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.StatusWarnFG))
-	input.Cursor.SetMode(cursor.CursorStatic)
+	input.Cursor.SetMode(cursor.CursorHide)
 	syncSpinner := spinner.New()
 	syncSpinner.Spinner = spinner.MiniDot
 	syncSpinner.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(theme.StatusRunFG))

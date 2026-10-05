@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"f/internal/notes"
+	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -40,6 +41,13 @@ func TestTruncateRunesIgnoresANSISequences(t *testing.T) {
 	styled := "\x1b[38;2;243;139;168m>\x1b[0m chash"
 	if got := truncateRunes(styled, 20); strings.Contains(got, "…") {
 		t.Fatalf("short colored input was truncated: %q", got)
+	}
+}
+
+func TestPickerHidesBlockCursorArtifact(t *testing.T) {
+	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
+	if got := m.input.Cursor.Mode(); got != cursor.CursorHide {
+		t.Fatalf("input cursor mode = %s, want hidden to avoid a reverse-video block on transparent terminals", got)
 	}
 }
 
