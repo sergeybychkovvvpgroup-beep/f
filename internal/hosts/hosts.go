@@ -215,6 +215,7 @@ func ToEntries(list []Host) []notes.Entry {
 		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd, kindSearch}
 		entries = append(entries, notes.Entry{
 			Desc:       label,
+			Address:    hostAddress(h),
 			Kind:       kind,
 			KindSearch: kindSearch,
 			Mode:       mode,
@@ -338,16 +339,23 @@ func remotePortLabel(value string) string {
 	return port
 }
 
+func hostAddress(h Host) string {
+	target := strings.TrimSpace(h.Host)
+	if target == "" {
+		return ""
+	}
+	if user := strings.TrimSpace(h.User); user != "" {
+		target = user + "@" + target
+	}
+	if h.Port > 0 {
+		target += ":" + strconv.Itoa(h.Port)
+	}
+	return target
+}
+
 func hostDetail(h Host) string {
 	parts := []string{}
-	target := h.Host
-	if h.User != "" && target != "" {
-		target = h.User + "@" + target
-	}
-	if target != "" {
-		if h.Port > 0 {
-			target += ":" + strconv.Itoa(h.Port)
-		}
+	if target := hostAddress(h); target != "" {
 		parts = append(parts, target)
 	}
 	if h.Desc != "" && h.Desc != "~/.ssh/config" {

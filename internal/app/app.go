@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	version     = "0.7.1"
+	version     = "0.8.0"
 	buildCommit = "unknown"
 )
 
@@ -115,6 +115,7 @@ func pickerOptions(cfg config.File, syncStatus ui.SyncStatus) ui.Options {
 		FullScreen:  fullScreen,
 		Height:      cfg.PickerHeight,
 		Layout:      cfg.Layout,
+		ShowAddress: cfg.ShowAddress,
 		InitialSync: syncStatus,
 	}
 	if options.FullScreen {
@@ -558,6 +559,18 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "ui mode: %s\n", mode)
 		return nil
 	}
+	if len(args) == 2 && args[0] == "address" {
+		enabled, err := config.SetShowAddress(args[1])
+		if err != nil {
+			return err
+		}
+		state := "off"
+		if enabled {
+			state = "on"
+		}
+		fmt.Fprintf(stdout, "address mode: %s\n", state)
+		return nil
+	}
 	if len(args) == 2 && args[0] == "layout" {
 		layout, err := config.SetLayout(args[1])
 		if err != nil {
@@ -566,7 +579,7 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stdout, "layout: %s\n", layout)
 		return nil
 	}
-	return errors.New("usage: f config show|sync|ui compact|full-screen|layout top|bottom")
+	return errors.New("usage: f config show|sync|ui compact|full-screen|layout top|bottom|address on|off")
 }
 
 func runSetup(args []string, stdout, stderr io.Writer) error {
@@ -847,6 +860,7 @@ Usage:
   %s config ui compact  use compact fzf-style UI
   %s config ui full-screen use full-screen fzf-style UI
   %s config layout top  place compact picker at top (or bottom)
+  %s config address on  show a muted SSH address below each name (or off)
   %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/f_hosts
   %s setup --adopt REPO adopt current ~/.ssh/config.d/f_hosts as hosts repo
 
@@ -855,7 +869,7 @@ Add options:
 
 Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/f_hosts.
 Aliases from ~/.ssh/config are shown automatically.
-`, name, name, name, name, name, name, name, name, name, name, name)
+`, name, name, name, name, name, name, name, name, name, name, name, name)
 }
 
 func cliName() string {

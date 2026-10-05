@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line results;
+- single-line results by default, or an optional muted SSH address below each name;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - muted key-binding line without tabs or preview panes.
@@ -28,6 +28,13 @@ Place compact mode at either edge:
 ```bash
 f config layout bottom
 f config layout top
+```
+
+Show a muted `user@host:port` address below each entry name:
+
+```bash
+f config address on
+f config address off     # return to single-line results
 ```
 
 Legacy config values migrate automatically: `light` → `compact`, `full` → `full-screen`.
@@ -73,6 +80,7 @@ f config ui compact     # compact UI
 f config ui full-screen # full-screen UI
 f config layout bottom  # compact at bottom
 f config layout top     # compact at top
+f config address on     # node address below the name
 ```
 
 Keys:

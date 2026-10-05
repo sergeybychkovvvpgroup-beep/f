@@ -19,6 +19,7 @@ type Options struct {
 	FullScreen       bool
 	Height           int
 	Layout           string
+	ShowAddress      bool
 	InitialSync      SyncStatus
 	SyncStatusStream <-chan SyncStatus
 }

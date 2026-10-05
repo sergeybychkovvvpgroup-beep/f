@@ -50,8 +50,8 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "f 0.7.1" {
-		t.Fatalf("version = %q, want %q", got, "f 0.7.1")
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.8.0" {
+		t.Fatalf("version = %q, want %q", got, "f 0.8.0")
 	}
 }
 
@@ -95,6 +95,27 @@ func TestFullScreenModeUsesAlternateScreen(t *testing.T) {
 	}
 	if options.Height != 0 {
 		t.Fatalf("full-screen height = %d, want 0", options.Height)
+	}
+}
+
+func TestConfigAddressEnablesMutedAddressRows(t *testing.T) {
+	t.Setenv("AOO_CONFIG_FILE", filepath.Join(t.TempDir(), "config.yaml"))
+	var stdout, stderr bytes.Buffer
+	if err := Run([]string{"config", "address", "on"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ShowAddress {
+		t.Fatal("show_address is disabled after 'f config address on'")
+	}
+	if !pickerOptions(cfg, ui.SyncStatus{}).ShowAddress {
+		t.Fatal("picker options did not receive show_address")
+	}
+	if !strings.Contains(stdout.String(), "address mode: on") {
+		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }
 

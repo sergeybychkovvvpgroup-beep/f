@@ -23,6 +23,7 @@ type File struct {
 	UIMode       string `yaml:"ui_mode"`
 	Layout       string `yaml:"layout"`
 	PickerHeight int    `yaml:"picker_height"`
+	ShowAddress  bool   `yaml:"show_address"`
 }
 
 type rawFile struct {
@@ -31,6 +32,7 @@ type rawFile struct {
 	UIMode       string `yaml:"ui_mode"`
 	Layout       string `yaml:"layout"`
 	PickerHeight *int   `yaml:"picker_height"`
+	ShowAddress  *bool  `yaml:"show_address"`
 }
 
 type SetupRequiredError struct{}
@@ -127,6 +129,9 @@ func Load() (File, error) {
 	}
 	if parsed.PickerHeight != nil {
 		cfg.PickerHeight = *parsed.PickerHeight
+	}
+	if parsed.ShowAddress != nil {
+		cfg.ShowAddress = *parsed.ShowAddress
 	}
 	if cfg.PickerHeight < 6 {
 		cfg.PickerHeight = 6
@@ -256,6 +261,27 @@ func SetUIMode(mode string) (string, error) {
 	return mode, nil
 }
 
+func SetShowAddress(value string) (bool, error) {
+	var enabled bool
+	switch strings.TrimSpace(strings.ToLower(value)) {
+	case "on", "true", "yes", "1":
+		enabled = true
+	case "off", "false", "no", "0":
+		enabled = false
+	default:
+		return false, fmt.Errorf("address mode must be on or off")
+	}
+	cfg, err := Load()
+	if err != nil {
+		return false, err
+	}
+	cfg.ShowAddress = enabled
+	if err := Save(cfg); err != nil {
+		return false, err
+	}
+	return enabled, nil
+}
+
 func SetLayout(layout string) (string, error) {
 	layout = strings.TrimSpace(strings.ToLower(layout))
 	if layout != "top" && layout != "bottom" {
@@ -296,9 +322,11 @@ func renderConfig(cfg File) string {
 		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/f_hosts/*.conf",
 		"# ui_mode: compact | full-screen (both use the same frameless fzf-style UI)",
 		"# layout: top | bottom (compact mode only)",
+		"# show_address: show a muted SSH address below each host name",
 		"ui_mode: " + yamlScalar(cfg.UIMode),
 		"layout: " + yamlScalar(cfg.Layout),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),
+		"show_address: " + strconv.FormatBool(cfg.ShowAddress),
 		"",
 	}
 	return strings.Join(lines, "\n")

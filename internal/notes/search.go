@@ -246,6 +246,7 @@ func commandEntries(entries []Entry) []Entry {
 			}
 			out = append(out, Entry{
 				Desc:       entry.DisplayName(),
+				Address:    entry.Address,
 				Kind:       entry.Kind,
 				KindSearch: entry.KindSearch,
 				Mode:       entry.Mode,

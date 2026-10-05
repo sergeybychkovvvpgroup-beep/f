@@ -202,8 +202,8 @@ func (m PickerModel) View() string {
 	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)
 	body := []string{}
 	if m.shouldRenderResults() {
-		body = m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle, detailStyle)
-		limit := m.maxVisibleItems()
+		body = m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle)
+		limit := m.maxVisibleItems() * m.resultRowHeight()
 		if len(body) > limit {
 			body = body[:limit]
 		}
@@ -371,9 +371,14 @@ func (m PickerModel) maxVisibleItems() int {
 	if available < 1 {
 		available = 1
 	}
-	maxItems := available / m.resultRowHeight()
-	if maxItems < 2 {
-		maxItems = 2
+	rowHeight := m.resultRowHeight()
+	maxItems := available / rowHeight
+	minimum := 2
+	if rowHeight > 1 {
+		minimum = 1
+	}
+	if maxItems < minimum {
+		maxItems = minimum
 	}
 	return maxItems
 }
@@ -497,7 +502,7 @@ func (m PickerModel) resultRowHeight() int {
 }
 
 func (m PickerModel) twoLineResults() bool {
-	return false
+	return m.options.ShowAddress
 }
 
 func (m PickerModel) statusLine() string {
@@ -767,7 +772,7 @@ func commandPreviewLines(value string, width int) []string {
 	return lines
 }
 
-func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle, hintStyle lipgloss.Style) []string {
+func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle lipgloss.Style) []string {
 	if len(m.matches) == 0 {
 		return []string{detailStyle.Render("No matches")}
 	}
@@ -782,16 +787,8 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		entry := match.Entry
 		selected := index == m.cursor
 		rowLines := []string{m.renderMatchLabelLine(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)}
-
-		snippet := match.Detail
-		if m.showInlinePreview() && index == m.cursor && !entry.HasCmd() {
-			preview := m.cachedPreview(entry)
-			if selectedSnippet := m.inlinePreviewLine(preview, width-4, m.activePreviewHit()); selectedSnippet != "" {
-				snippet = selectedSnippet
-			}
-		}
 		if m.twoLineResults() {
-			rowLines = append(rowLines, m.detailLine(snippet, m.enterHintText(entry), width, detailStyle, hintStyle))
+			rowLines = append(rowLines, m.addressLine(entry.Address, width, detailStyle))
 		}
 		rows = append(rows, renderedRow{lines: rowLines})
 	}
@@ -801,6 +798,14 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		lines = append(lines, row.lines...)
 	}
 	return lines
+}
+
+func (m PickerModel) addressLine(address string, width int, detailStyle lipgloss.Style) string {
+	address = strings.Join(strings.Fields(strings.TrimSpace(address)), " ")
+	address = truncateRunes(address, maxInt(0, width-2))
+	query := strings.TrimSpace(m.input.Value())
+	matchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+	return detailStyle.Render("  ") + renderFuzzyText(address, query, detailStyle, matchStyle)
 }
 
 func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, width int, selected bool, rowStyle, selectedStyle, detailStyle lipgloss.Style) string {
@@ -813,10 +818,18 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	labelText := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
 	if m.twoLineResults() {
 		labelText = truncateRunes(labelText, contentWidth)
+		baseStyle := rowStyle
 		if selected {
-			return selectedStyle.Render(prefix) + selectedStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)))
+			baseStyle = selectedStyle
 		}
-		return rowStyle.Render(prefix) + rowStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)))
+		query := strings.TrimSpace(m.input.Value())
+		matchStyle := baseStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+		rendered := baseStyle.Render(prefix) + renderFuzzyText(labelText, query, baseStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+labelText)
+		if padding > 0 {
+			rendered += baseStyle.Render(strings.Repeat(" ", padding))
+		}
+		return rendered
 	}
 
 	detailText := match.Detail

@@ -68,6 +68,17 @@ func TestClassifyLegacyHostSyntaxKinds(t *testing.T) {
 	}
 }
 
+func TestToEntriesKeepsSSHAddressSeparateFromDescription(t *testing.T) {
+	host := Host{Name: "gateway", Host: "192.0.2.10", User: "operator", Port: 2222, Desc: "edge router"}
+	entries := ToEntries([]Host{host})
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	if got := entries[0].Address; got != "operator@192.0.2.10:2222" {
+		t.Fatalf("address = %q, want operator@192.0.2.10:2222", got)
+	}
+}
+
 func TestToEntriesAddsSearchableKindWithoutChangingCommand(t *testing.T) {
 	host := Host{Name: "router-status", Host: "router", Cmd: "ssh router show version", Mode: "commands jumps"}
 	entries := ToEntries([]Host{host})

@@ -102,6 +102,32 @@ func TestSetUIModeRejectsUnknownMode(t *testing.T) {
 	}
 }
 
+func TestSetShowAddressAcceptsOnAndOff(t *testing.T) {
+	t.Setenv("AOO_CONFIG_FILE", filepath.Join(t.TempDir(), "config.yaml"))
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{value: "on", want: true},
+		{value: "off", want: false},
+	} {
+		got, err := SetShowAddress(tc.value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != tc.want {
+			t.Fatalf("SetShowAddress(%q) = %t, want %t", tc.value, got, tc.want)
+		}
+		cfg, err := Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.ShowAddress != tc.want {
+			t.Fatalf("show_address = %t, want %t", cfg.ShowAddress, tc.want)
+		}
+	}
+}
+
 func TestSetLayoutAcceptsTopAndBottom(t *testing.T) {
 	t.Setenv("AOO_CONFIG_FILE", filepath.Join(t.TempDir(), "config.yaml"))
 	for _, want := range []string{"top", "bottom"} {

@@ -8,12 +8,84 @@ import (
 	"f/internal/notes"
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
-func TestPickerAlwaysUsesSingleLineResults(t *testing.T) {
+func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	m := PickerModel{}
 	if got := m.resultRowHeight(); got != 1 {
-		t.Fatalf("picker row height = %d, want 1", got)
+		t.Fatalf("default picker row height = %d, want 1", got)
+	}
+}
+
+func TestPickerShowsMutedAddressBelowNameWhenEnabled(t *testing.T) {
+	entry := notes.Entry{
+		Desc:    "gateway",
+		Address: "operator@192.0.2.10:2222",
+		Kind:    "host",
+		Actions: []notes.Action{{Cmd: "ssh gateway"}},
+	}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
+	m.width, m.height = 100, 8
+	if got := m.resultRowHeight(); got != 2 {
+		t.Fatalf("address mode row height = %d, want 2", got)
+	}
+	plain := stripANSI(m.View())
+	lines := strings.Split(plain, "\n")
+	found := false
+	for i := 0; i+1 < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "│ gateway" && strings.TrimSpace(lines[i+1]) == "operator@192.0.2.10:2222" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("address is not rendered below the name: %q", plain)
+	}
+}
+
+func TestAddressModeKeepsFuzzyMatchHighlighting(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+
+	theme := DefaultTheme()
+	entries := []notes.Entry{
+		{
+			Desc:    "gateway-one",
+			Address: "operator@192.0.2.10:2222",
+			Kind:    "host",
+			Note:    "gateway-one operator@192.0.2.10:2222",
+			Actions: []notes.Action{{Cmd: "ssh gateway-one"}},
+		},
+		{
+			Desc:    "gateway-two",
+			Address: "operator@192.0.2.11:2222",
+			Kind:    "host",
+			Note:    "gateway-two operator@192.0.2.11:2222",
+			Actions: []notes.Action{{Cmd: "ssh gateway-two"}},
+		},
+	}
+	m := NewPicker(entries, "gate", theme, Options{Height: 10, ShowAddress: true})
+	m.width, m.height = 100, 10
+	m.cursor = 1
+	expected := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.MatchFG)).Bold(true).Render("g")
+	if view := m.View(); !strings.Contains(view, expected) {
+		t.Fatalf("address mode lost fuzzy-match highlighting: %q", view)
+	}
+}
+
+func TestAddressModeFitsMinimumPickerHeight(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "one", Address: "operator@192.0.2.1", Kind: "host", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Address: "operator@192.0.2.2", Kind: "host", Actions: []notes.Action{{Cmd: "ssh two"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 6, ShowAddress: true})
+	m.width, m.height = 100, 6
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "operator@192.0.2.1") || !strings.Contains(plain, "F1 all") || strings.Contains(plain, "…") {
+		t.Fatalf("minimum-height address mode is clipped: %q", plain)
 	}
 }
 
