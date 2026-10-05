@@ -33,7 +33,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
 - `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. The picker always shows its single-line result list.
-- Both modes use the same rounded, pink-accented application card with horizontal margins, title, active-category badge, tabless preview-free results, and Bubbles `textinput`/`spinner` components.
+- Both modes use the same rounded, pink-accented application card with title, active-category badge, tabless preview-free results, and Bubbles `textinput`/`spinner` components. Compact mode is centered, capped at 100 terminal cells, and shrinks vertically to the filtered result count up to `picker_height`; full-screen keeps the configured terminal height.
 - `compact` stays in the normal terminal buffer and supports `layout: top | bottom`, changed by `f config layout top|bottom`.
 - `full-screen` uses the alternate screen and always renders from the top.
 - Keep the rounded application frame; do not add mode tabs, split panes, preview panels, or a separate help footer.

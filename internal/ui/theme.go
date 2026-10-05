@@ -28,11 +28,11 @@ func DefaultTheme() Theme {
 	return Theme{
 		Name:         "default",
 		TitleFG:      "#cdd6f4",
-		TitleDimFG:   "#6c7086",
+		TitleDimFG:   "#9399b2",
 		SelectedFG:   "#ffffff",
 		SelectedBG:   "#313244",
 		DetailFG:     "#a6adc8",
-		HelpFG:       "#6c7086",
+		HelpFG:       "#9399b2",
 		InputFG:      "#cdd6f4",
 		InputBG:      "",
 		InputBorder:  "#a6adc8",

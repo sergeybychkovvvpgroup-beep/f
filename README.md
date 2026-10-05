@@ -6,7 +6,7 @@ It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list,
 
 ## Interface
 
-Both sizes use one pink-accented application card with outer and inner spacing. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
+Both sizes use one pink-accented application card with outer and inner spacing. In compact mode it is centered, width-capped, and automatically shrinks vertically when few results remain. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
 
 - title and active-category badge;
 - query line;

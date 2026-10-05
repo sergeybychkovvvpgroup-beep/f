@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"f/internal/notes"
 	tea "github.com/charmbracelet/bubbletea"
@@ -88,6 +89,36 @@ func TestPickerAppCardHasHorizontalMargin(t *testing.T) {
 		if !strings.HasPrefix(line, "  ") {
 			t.Fatalf("card line has no two-cell margin: %q", line)
 		}
+	}
+}
+
+func TestPickerCardIsCenteredAndWidthCappedOnWideTerminal(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "server", Kind: "host", Actions: []notes.Action{{Cmd: "ssh server"}}}}, "", DefaultTheme(), Options{Height: 14})
+	m.width, m.height = 160, 14
+	top := strings.Split(stripANSI(m.View()), "\n")[0]
+	leftMargin := len(top) - len(strings.TrimLeft(top, " "))
+	cardWidth := utf8.RuneCountInString(strings.TrimSpace(top))
+	if leftMargin < 20 {
+		t.Fatalf("wide terminal card is not centered: left margin=%d, line=%q", leftMargin, top)
+	}
+	if cardWidth > 100 {
+		t.Fatalf("wide terminal card width=%d, want at most 100", cardWidth)
+	}
+}
+
+func TestCompactPickerShrinksToSmallFilteredResultSet(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "one", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh two"}}},
+		{Desc: "three", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh three"}}},
+		{Desc: "four", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh four"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Layout: "bottom", Height: 14})
+	m.width, m.height = 160, 14
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyF3})
+	lines := strings.Split(stripANSI(updated.(PickerModel).View()), "\n")
+	if len(lines) != 9 {
+		t.Fatalf("four-result compact card has %d lines, want 9 without empty vertical space", len(lines))
 	}
 }
 

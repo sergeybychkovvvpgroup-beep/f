@@ -193,7 +193,7 @@ func (m PickerModel) View() string {
 	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
 	contentWidth := m.contentWidth()
-	effectiveHeight := m.effectiveHeight()
+	effectiveHeight := m.viewHeight()
 	innerHeight := maxInt(4, effectiveHeight-2)
 
 	input := m.input
@@ -232,7 +232,7 @@ func (m PickerModel) View() string {
 		Background(lipgloss.Color("#181825")).
 		Padding(0, 1).
 		Render(content)
-	return lipgloss.NewStyle().MarginLeft(2).Render(card)
+	return lipgloss.NewStyle().MarginLeft(m.horizontalMargin()).Render(card)
 }
 
 func (m PickerModel) renderHeader(width int) string {
@@ -374,7 +374,7 @@ func (m PickerModel) offset() int {
 }
 
 func (m PickerModel) maxVisibleItems() int {
-	available := m.effectiveHeight() - 5
+	available := m.viewHeight() - 5
 	if available < 1 {
 		available = 1
 	}
@@ -427,13 +427,25 @@ func minInt(a, b int) int {
 }
 
 func (m PickerModel) contentWidth() int {
+	return maxInt(16, m.cardWidth()-4)
+}
+
+func (m PickerModel) cardWidth() int {
 	if m.width <= 0 {
-		return 72
+		return 80
 	}
-	if m.width < 24 {
-		return 16
+	available := m.width - 4
+	if available < 20 {
+		return maxInt(8, m.width)
 	}
-	return m.width - 8
+	return minInt(100, available)
+}
+
+func (m PickerModel) horizontalMargin() int {
+	if m.width <= m.cardWidth() {
+		return 0
+	}
+	return (m.width - m.cardWidth()) / 2
 }
 
 func (m PickerModel) effectiveHeight() int {
@@ -448,6 +460,22 @@ func (m PickerModel) effectiveHeight() int {
 		return 6
 	}
 	return height
+}
+
+func (m PickerModel) viewHeight() int {
+	maximum := m.effectiveHeight()
+	if m.options.FullScreen {
+		return maximum
+	}
+	results := len(m.matches)
+	if results == 0 {
+		results = 1
+	}
+	desired := results*m.resultRowHeight() + 5
+	if desired < 8 {
+		desired = 8
+	}
+	return minInt(maximum, desired)
 }
 
 func (m PickerModel) inputWidth() int {
