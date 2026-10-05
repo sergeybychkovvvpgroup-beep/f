@@ -4,8 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"aoo/internal/notes"
+	"f/internal/notes"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func TestPickerAlwaysUsesSingleLineResults(t *testing.T) {
@@ -153,6 +154,50 @@ func TestPickerSearchesAllEntryKindsTogether(t *testing.T) {
 	}
 	if strings.Contains(m.statusLine(), "F1") {
 		t.Fatalf("unified status still exposes mode tabs: %q", m.statusLine())
+	}
+}
+
+func TestPickerRendersSearchableEntryKindPrefixes(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "server", Kind: "host", Actions: []notes.Action{{Cmd: "ssh server"}}},
+		{Desc: "status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router show version"}}},
+		{Desc: "admin", Kind: "fwd", Actions: []notes.Action{{Cmd: "ssh admin-forward"}}},
+		{Desc: "production", Kind: "jump", Actions: []notes.Action{{Cmd: "ssh production"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	plain := stripANSI(m.View())
+	for _, prefix := range []string{"host:", "cmd:", "fwd:", "jump:"} {
+		if !strings.Contains(plain, prefix) {
+			t.Fatalf("picker is missing %q prefix: %q", prefix, plain)
+		}
+	}
+
+	filtered := NewPicker(entries, "cmd", DefaultTheme(), Options{Height: 8})
+	if len(filtered.matches) != 1 || filtered.matches[0].Entry.Kind != "cmd" {
+		t.Fatalf("cmd search returned %+v, want only command entry", filtered.matches)
+	}
+}
+
+func TestPickerStatusShowsCompactKindLegend(t *testing.T) {
+	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	plain := stripANSI(m.View())
+	for _, item := range []string{"host=hosts", "cmd=commands", "fwd=forwards", "jump=jumps"} {
+		if !strings.Contains(plain, item) {
+			t.Fatalf("kind legend is missing %q: %q", item, plain)
+		}
+	}
+	if got := len(strings.Split(plain, "\n")); got != 8 {
+		t.Fatalf("legend changed picker height to %d lines, want 8", got)
+	}
+}
+
+func TestKindPrefixUsesMutedStyle(t *testing.T) {
+	entry := notes.Entry{Desc: "status", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh router show version"}}}
+	m := NewPicker([]notes.Entry{entry}, "cmd", DefaultTheme(), Options{Height: 6})
+	if got, want := m.kindPrefixStyle().GetForeground(), lipgloss.Color(m.theme.TitleDimFG); got != want {
+		t.Fatalf("kind prefix foreground = %v, want muted %v", got, want)
 	}
 }
 

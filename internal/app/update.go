@@ -112,7 +112,7 @@ func updateCachePath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(cacheDir, "aoo", "update-check.json"), nil
+	return filepath.Join(cacheDir, "f", "update-check.json"), nil
 }
 
 func readUpdateCache(path string) (updateCheckCache, bool) {

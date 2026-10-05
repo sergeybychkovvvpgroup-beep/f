@@ -1,139 +1,68 @@
-# Установка aoo/f на свежей машине
-
-Эта инструкция описывает быстрый сценарий: поставить `f`/`aoo`, подключить репозиторий SSH-хостов и сразу получить рабочий picker.
+# Установка f на свежей машине
 
 ## Что получится
 
 - бинарник `f` в `~/.local/bin/f`;
-- совместимый symlink `~/.local/bin/aoo`;
-- отдельный каталог хостов только для aoo:
+- конфигурация в `~/.config/f/config.yaml`;
+- отдельный каталог SSH-хостов `~/.ssh/config.d/f_hosts/`;
+- include `Include ~/.ssh/config.d/f_hosts/*.conf` в `~/.ssh/config`.
 
-```text
-~/.ssh/config.d/aoo_hosts/
-```
-
-- include в OpenSSH config:
-
-```ssh-config
-Include ~/.ssh/config.d/aoo_hosts/*.conf
-```
-
-Так aoo не перетирает и не забирает под git весь существующий `~/.ssh/config.d`.
-
-## Установка на новой машине
+## Установка
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
 ```
 
-Если `~/.local/bin` ещё не в `PATH`, добавь его в shell config:
+Если `~/.local/bin` ещё не входит в `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Проверь бинарник:
+Проверка:
 
 ```bash
 f version
 ```
 
-## Подключение хостов из repo
+## Подключение репозитория хостов
 
 ```bash
 f setup <ssh-config-repo-url>
 ```
 
-Например:
+Команда добавит OpenSSH include и клонирует репозиторий в `~/.ssh/config.d/f_hosts`.
+
+Чтобы опубликовать уже подготовленные `.conf`-файлы:
 
 ```bash
-f setup https://git.dawq.me/sergeyb/aoo-hosts.git
-```
-
-Команда:
-
-1. создаст или обновит `~/.ssh/config`;
-2. добавит `Include ~/.ssh/config.d/aoo_hosts/*.conf`;
-3. склонирует repo в `~/.ssh/config.d/aoo_hosts`;
-4. оставит остальные файлы `~/.ssh/config.d` нетронутыми.
-
-После этого можно запускать:
-
-```bash
-f
-f list
-f prod
-```
-
-## Первичная публикация хостов с текущей машины
-
-На машине, где уже есть текущий список хостов, один раз выполни:
-
-```bash
+mkdir -p ~/.ssh/config.d/f_hosts
+cp ~/.ssh/config.d/my-hosts.conf ~/.ssh/config.d/f_hosts/
 f setup --adopt <ssh-config-repo-url>
 ```
 
-Если старый файл уже лежит в `~/.ssh/config.d/aoo.conf`, команда автоматически скопирует его в:
+## Синхронизация
 
-```text
-~/.ssh/config.d/aoo_hosts/aoo.conf
-```
-
-и запушит каталог `aoo_hosts` в указанный repo.
-
-Если хосты лежат в других `.conf` файлах, сначала скопируй нужные файлы вручную:
-
-```bash
-mkdir -p ~/.ssh/config.d/aoo_hosts
-cp ~/.ssh/config.d/my-hosts.conf ~/.ssh/config.d/aoo_hosts/
-f setup --adopt <ssh-config-repo-url>
-```
-
-## Как работает синхронизация
-
-Если `~/.ssh/config.d/aoo_hosts` является git repo, aoo синхронизирует его автоматически:
-
-- при запуске picker делает `git pull --rebase --autostash`;
-- перед `f add` тоже подтягивает изменения;
-- после `f add` делает commit и push;
-- после редактирования хоста через `Ctrl+E` / `Alt+E` делает commit и push.
-
-Ручная проверка:
+Если `~/.ssh/config.d/f_hosts` является Git-репозиторием, `f` подтягивает изменения перед чтением и отправляет изменения после `f add` или редактирования через `Ctrl+E`.
 
 ```bash
 f config sync
-cd ~/.ssh/config.d/aoo_hosts && git status --short --branch
+cd ~/.ssh/config.d/f_hosts && git status --short --branch
 ```
 
-## Обновление aoo
+## Обновление
 
 ```bash
 f upgrade
 ```
 
-или повторно:
+Источник можно временно переопределить через `F_UPGRADE_REPO`.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
-```
-
-## Быстрая диагностика
-
-Пути:
+## Диагностика
 
 ```bash
 f config show
-```
-
-Проверка OpenSSH include:
-
-```bash
-grep -n 'aoo_hosts' ~/.ssh/config
-```
-
-Проверка видимости alias:
-
-```bash
+grep -n 'f_hosts' ~/.ssh/config
 ssh -G <alias> >/dev/null
 f list
 ```

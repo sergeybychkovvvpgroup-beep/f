@@ -1,4 +1,4 @@
-module aoo
+module f
 
 go 1.22.2
 

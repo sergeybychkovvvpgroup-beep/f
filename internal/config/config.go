@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	envNotesDir       = "AOO_NOTES_DIR"
+	envNotesDir       = "F_NOTES_DIR"
+	legacyAooNotesDir = "AOO_NOTES_DIR"
 	legacyEnvNotesDir = "TERM_NOTES_DIR"
 )
 
@@ -39,22 +40,21 @@ func (e SetupRequiredError) Error() string {
 notes directory is not configured
 
 Initial setup:
-  edit ~/.config/aoo/config.yaml
+  edit ~/.config/f/config.yaml
   and set notes_dir
 
-Or use commands:
-  aoo set-folder /path/to/notes
-
 Temporary override:
-  aoo --dir /path/to/notes
-  AOO_NOTES_DIR=/path/to/notes aoo
+  F_NOTES_DIR=/path/to/notes f
 
 Check current config:
-  aoo config show
+  f config show
 `)
 }
 
 func ConfigPath() (string, error) {
+	if custom := strings.TrimSpace(os.Getenv("F_CONFIG_FILE")); custom != "" {
+		return filepath.Abs(custom)
+	}
 	if custom := strings.TrimSpace(os.Getenv("AOO_CONFIG_FILE")); custom != "" {
 		return filepath.Abs(custom)
 	}
@@ -64,6 +64,14 @@ func ConfigPath() (string, error) {
 		return "", fmt.Errorf("cannot resolve user config dir: %w", err)
 	}
 
+	return filepath.Join(dir, "f", "config.yaml"), nil
+}
+
+func legacyConfigPath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
 	return filepath.Join(dir, "aoo", "config.yaml"), nil
 }
 
@@ -82,15 +90,25 @@ func Load() (File, error) {
 	}
 
 	raw, err := os.ReadFile(path)
+	migratedLegacy := false
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
+		if !errors.Is(err, os.ErrNotExist) {
+			return File{}, fmt.Errorf("read config %s: %w", path, err)
+		}
+		if legacyPath, legacyErr := legacyConfigPath(); legacyErr == nil && legacyPath != path {
+			if legacyRaw, readErr := os.ReadFile(legacyPath); readErr == nil {
+				raw = legacyRaw
+				migratedLegacy = true
+				err = nil
+			}
+		}
+		if err != nil {
 			cfg := DefaultFile()
 			if saveErr := Save(cfg); saveErr != nil {
 				return File{}, saveErr
 			}
 			return cfg, nil
 		}
-		return File{}, fmt.Errorf("read config %s: %w", path, err)
 	}
 
 	cfg := DefaultFile()
@@ -115,7 +133,7 @@ func Load() (File, error) {
 	}
 	cfg.Layout = normalizeLayout(cfg.Layout)
 	cfg.UIMode = normalizeUIMode(cfg.UIMode)
-	if configNeedsRewrite(raw, cfg) {
+	if migratedLegacy || configNeedsRewrite(raw, cfg) {
 		if err := Save(cfg); err != nil {
 			return File{}, err
 		}
@@ -149,6 +167,11 @@ func ResolveNotesDir(cliValue string) (string, string, error) {
 	if value := strings.TrimSpace(os.Getenv(envNotesDir)); value != "" {
 		path, err := filepath.Abs(value)
 		return path, envNotesDir, err
+	}
+
+	if value := strings.TrimSpace(os.Getenv(legacyAooNotesDir)); value != "" {
+		path, err := filepath.Abs(value)
+		return path, legacyAooNotesDir, err
 	}
 
 	if value := strings.TrimSpace(os.Getenv(legacyEnvNotesDir)); value != "" {
@@ -269,8 +292,8 @@ func renderConfig(cfg File) string {
 		cfg.PickerHeight = DefaultFile().PickerHeight
 	}
 	lines := []string{
-		"# f / aoo — SSH host picker",
-		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/aoo_hosts/*.conf",
+		"# f — SSH host picker",
+		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/f_hosts/*.conf",
 		"# ui_mode: compact | full-screen (both use the same frameless fzf-style UI)",
 		"# layout: top | bottom (compact mode only)",
 		"ui_mode: " + yamlScalar(cfg.UIMode),

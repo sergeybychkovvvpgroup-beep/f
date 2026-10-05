@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO_URL="${AOO_REPO_URL:-https://github.com/sergeybychkovvvpgroup-beep/f.git}"
-RAW_BASE="${AOO_RAW_BASE:-https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main}"
-BIN_DIR="${AOO_BIN_DIR:-$HOME/.local/bin}"
-CACHE_DIR="${AOO_CACHE_DIR:-$HOME/.cache/aoo/source}"
+REPO_URL="${F_REPO_URL:-https://github.com/sergeybychkovvvpgroup-beep/f.git}"
+RAW_BASE="${F_RAW_BASE:-https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main}"
+BIN_DIR="${F_BIN_DIR:-$HOME/.local/bin}"
+CACHE_DIR="${F_CACHE_DIR:-$HOME/.cache/f/source}"
 BIN="$BIN_DIR/f"
 
 mkdir -p "$BIN_DIR"
@@ -23,7 +23,7 @@ if need curl; then
   esac
   if [ -n "$asset" ] && curl -fsSL "$RAW_BASE/dist/$asset" -o "$tmp" 2>/dev/null; then
     install -m 0755 "$tmp" "$BIN"
-    ln -sf f "$BIN_DIR/aoo"
+
     rm -f "$tmp"
     echo "installed: $BIN"
     echo "next: f setup <hosts-repo-url>"
@@ -50,8 +50,7 @@ else
   git clone --depth 1 "$REPO_URL" "$CACHE_DIR"
 fi
 
-(cd "$CACHE_DIR" && commit="$(git rev-parse HEAD)" && go build -buildvcs=false -ldflags "-X aoo/internal/app.buildCommit=$commit" -o "$BIN" ./cmd/f)
-ln -sf f "$BIN_DIR/aoo"
+(cd "$CACHE_DIR" && commit="$(git rev-parse HEAD)" && go build -buildvcs=false -ldflags "-X f/internal/app.buildCommit=$commit" -o "$BIN" ./cmd/f)
 
 echo "installed: $BIN"
 echo "ensure PATH contains: $BIN_DIR"

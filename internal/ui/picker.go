@@ -6,7 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"aoo/internal/notes"
+	"f/internal/notes"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -403,6 +403,7 @@ func (m PickerModel) renderStatusBar(baseStyle lipgloss.Style) string {
 	if sync := m.renderSyncStatus(); sync != "" {
 		line += baseStyle.Render("  ·  ") + sync
 	}
+	line += baseStyle.Render("  ·  host=hosts  cmd=commands  fwd=forwards  jump=jumps")
 	return line
 }
 
@@ -674,14 +675,19 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 		prefix = m.theme.SelectedMark + " "
 	}
 	rowWidth := maxInt(12, width)
-	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix))
+	kindText := ""
+	if kind := strings.TrimSpace(entry.Kind); kind != "" {
+		kindText = kind + ": "
+	}
+	kindWidth := utf8.RuneCountInString(kindText)
+	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix)-kindWidth)
 	labelText := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
 	if m.twoLineResults() {
 		labelText = truncateRunes(labelText, contentWidth)
 		if selected {
-			return selectedStyle.Render(padRight(prefix+labelText, rowWidth))
+			return selectedStyle.Render(prefix) + m.renderKindPrefix(kindText) + selectedStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)-kindWidth))
 		}
-		return rowStyle.Render(padRight(prefix+labelText, rowWidth))
+		return rowStyle.Render(prefix) + m.renderKindPrefix(kindText) + rowStyle.Render(padRight(labelText, rowWidth-utf8.RuneCountInString(prefix)-kindWidth))
 	}
 
 	detailText := match.Detail
@@ -705,8 +711,8 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	query := strings.TrimSpace(m.input.Value())
 	if selected {
 		matchStyle := selectedStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := selectedStyle.Render(prefix) + renderFuzzyText(combined, query, selectedStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
+		rendered := selectedStyle.Render(prefix) + m.renderKindPrefix(kindText) + renderFuzzyText(combined, query, selectedStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+kindText+combined)
 		if padding > 0 {
 			rendered += selectedStyle.Render(strings.Repeat(" ", padding))
 		}
@@ -715,8 +721,8 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 
 	if secondary == "" || combined == primary {
 		matchStyle := rowStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := rowStyle.Render(prefix) + renderFuzzyText(combined, query, rowStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
+		rendered := rowStyle.Render(prefix) + m.renderKindPrefix(kindText) + renderFuzzyText(combined, query, rowStyle, matchStyle)
+		padding := rowWidth - utf8.RuneCountInString(prefix+kindText+combined)
 		if padding > 0 {
 			rendered += rowStyle.Render(strings.Repeat(" ", padding))
 		}
@@ -728,13 +734,24 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	if split > len(combinedRunes) {
 		split = len(combinedRunes)
 	}
-	first := prefix + string(combinedRunes[:split])
+	first := string(combinedRunes[:split])
 	second := string(combinedRunes[split:])
-	visible := utf8.RuneCountInString(first) + utf8.RuneCountInString(second)
+	visible := utf8.RuneCountInString(prefix+kindText+first) + utf8.RuneCountInString(second)
 	if visible < rowWidth {
 		second += strings.Repeat(" ", rowWidth-visible)
 	}
-	return rowStyle.Render(first) + detailStyle.Render(second)
+	return rowStyle.Render(prefix) + m.renderKindPrefix(kindText) + rowStyle.Render(first) + detailStyle.Render(second)
+}
+
+func (m PickerModel) renderKindPrefix(kindText string) string {
+	if kindText == "" {
+		return ""
+	}
+	return m.kindPrefixStyle().Render(kindText)
+}
+
+func (m PickerModel) kindPrefixStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
 }
 
 func renderFuzzyText(text, query string, baseStyle, matchStyle lipgloss.Style) string {

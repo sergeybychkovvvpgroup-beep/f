@@ -13,14 +13,14 @@ import (
 	"strings"
 	"time"
 
-	"aoo/internal/config"
-	"aoo/internal/hosts"
-	"aoo/internal/notes"
-	"aoo/internal/ui"
+	"f/internal/config"
+	"f/internal/hosts"
+	"f/internal/notes"
+	"f/internal/ui"
 )
 
 var (
-	version     = "0.4.1"
+	version     = "0.5.0"
 	buildCommit = "unknown"
 )
 
@@ -49,7 +49,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 }
 
 func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
-	if stdin == os.Stdin && strings.TrimSpace(os.Getenv("AOO_NO_UPDATE_CHECK")) == "" {
+	if stdin == os.Stdin && envValue("F_NO_UPDATE_CHECK", "AOO_NO_UPDATE_CHECK") == "" {
 		if updateErr := maybeOfferUpgrade(stdin, stdout, stderr); updateErr != nil {
 			fmt.Fprintf(stderr, "[f] update check: %v\n", updateErr)
 		}
@@ -136,7 +136,7 @@ func editSSHConfigEntry(entry notes.Entry, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp("", "aoo-ssh-edit-*.conf")
+	tmp, err := os.CreateTemp("", "f-ssh-edit-*.conf")
 	if err != nil {
 		return err
 	}
@@ -192,6 +192,13 @@ func shellQuoteArg(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
+func envValue(primary, legacy string) string {
+	if value := strings.TrimSpace(os.Getenv(primary)); value != "" {
+		return value
+	}
+	return strings.TrimSpace(os.Getenv(legacy))
+}
+
 func sshAliasFromCommand(command string) (string, bool) {
 	fields := strings.Fields(strings.TrimSpace(command))
 	if len(fields) != 2 || fields[0] != "ssh" {
@@ -207,8 +214,8 @@ func sshAliasFromCommand(command string) (string, bool) {
 func editableSSHBlock(alias string) (string, error) {
 	attrs := sshG(alias)
 	lines := []string{
-		"# Edit this block. It will be saved to ~/.ssh/config.d/aoo_hosts/aoo.conf",
-		"# aoo uses its dedicated OpenSSH config.d subdirectory; no hidden store.",
+		"# Edit this block. It will be saved to ~/.ssh/config.d/f_hosts/f.conf",
+		"# f uses its dedicated OpenSSH config.d subdirectory; no hidden store.",
 		"Host " + alias,
 	}
 	add := func(key, value string) {
@@ -282,7 +289,7 @@ func userSSHConfigPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "aoo.conf"), nil
+	return filepath.Join(dir, "f.conf"), nil
 }
 
 func sshConfigDir() (string, error) {
@@ -290,15 +297,15 @@ func sshConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ssh", "config.d", "aoo_hosts"), nil
+	return filepath.Join(home, ".ssh", "config.d", "f_hosts"), nil
 }
 
 func upsertMarkedBlock(path, alias, block string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	begin := "# aoo-edit begin " + alias
-	end := "# aoo-edit end " + alias
+	begin := "# f-edit begin " + alias
+	end := "# f-edit end " + alias
 	marked := begin + "\n" + block + end + "\n"
 	raw, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -307,6 +314,15 @@ func upsertMarkedBlock(path, alias, block string) error {
 	text := string(raw)
 	start := strings.Index(text, begin)
 	finish := strings.Index(text, end)
+	if start < 0 || finish < start {
+		legacyBegin := "# aoo-edit begin " + alias
+		legacyEnd := "# aoo-edit end " + alias
+		start = strings.Index(text, legacyBegin)
+		finish = strings.Index(text, legacyEnd)
+		if start >= 0 && finish >= start {
+			end = legacyEnd
+		}
+	}
 	if start >= 0 && finish >= start {
 		finish += len(end)
 		if finish < len(text) && text[finish] == '\n' {
@@ -556,8 +572,8 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 func runSetup(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	force := fs.Bool("force", false, "replace existing non-git ~/.ssh/config.d/aoo_hosts after backup")
-	adopt := fs.Bool("adopt", false, "turn current ~/.ssh/config.d/aoo_hosts into the hosts git repo and push it")
+	force := fs.Bool("force", false, "replace existing non-git ~/.ssh/config.d/f_hosts after backup")
+	adopt := fs.Bool("adopt", false, "turn current ~/.ssh/config.d/f_hosts into the hosts git repo and push it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -576,7 +592,7 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if *adopt {
-		if err := seedAooHostsDirForAdopt(dir, stdout); err != nil {
+		if err := seedFHostsDirForAdopt(dir, stdout); err != nil {
 			return err
 		}
 	}
@@ -595,7 +611,7 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 			if err := adoptHostsRepo(dir, repoURL, stdout, stderr); err != nil {
 				return err
 			}
-			fmt.Fprintf(stdout, "adopted current aoo_hosts SSH config repo: %s\n", dir)
+			fmt.Fprintf(stdout, "adopted current f_hosts SSH config repo: %s\n", dir)
 			return nil
 		}
 		if !*force {
@@ -603,9 +619,9 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 		}
 		backup := fmt.Sprintf("%s.backup.%s", dir, timestamp())
 		if err := os.Rename(dir, backup); err != nil {
-			return fmt.Errorf("backup existing aoo_hosts: %w", err)
+			return fmt.Errorf("backup existing f_hosts: %w", err)
 		}
-		fmt.Fprintf(stdout, "backed up existing aoo_hosts SSH config repo: %s\n", backup)
+		fmt.Fprintf(stdout, "backed up existing f_hosts SSH config repo: %s\n", backup)
 	}
 	if *adopt {
 		return fmt.Errorf("%s is empty; put *.conf files there first or keep legacy ~/.ssh/config.d/aoo.conf for automatic import", dir)
@@ -624,7 +640,7 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
-func seedAooHostsDirForAdopt(dir string, stdout io.Writer) error {
+func seedFHostsDirForAdopt(dir string, stdout io.Writer) error {
 	if nonEmptyDir(dir) {
 		return nil
 	}
@@ -642,7 +658,7 @@ func seedAooHostsDirForAdopt(dir string, stdout io.Writer) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	target := filepath.Join(dir, "aoo.conf")
+	target := filepath.Join(dir, "f.conf")
 	if _, err := os.Stat(target); err == nil {
 		return nil
 	}
@@ -676,7 +692,7 @@ func adoptHostsRepo(dir, repoURL string, stdout, stderr io.Writer) error {
 		if err := ensureGitIdentity(dir); err != nil {
 			return err
 		}
-		if err := runUpgradeGit(dir, stdout, stderr, "commit", "-m", "Adopt aoo SSH hosts"); err != nil {
+		if err := runUpgradeGit(dir, stdout, stderr, "commit", "-m", "Adopt f SSH hosts"); err != nil {
 			return err
 		}
 	}
@@ -702,8 +718,8 @@ func ensureSSHConfigInclude() error {
 		return err
 	}
 	text := string(raw)
-	includeRel := "Include ~/.ssh/config.d/aoo_hosts/*.conf"
-	includeAbs := "Include " + filepath.Join(home, ".ssh", "config.d", "aoo_hosts", "*.conf")
+	includeRel := "Include ~/.ssh/config.d/f_hosts/*.conf"
+	includeAbs := "Include " + filepath.Join(home, ".ssh", "config.d", "f_hosts", "*.conf")
 	if strings.Contains(text, includeRel) || strings.Contains(text, includeAbs) {
 		return nil
 	}
@@ -726,7 +742,7 @@ func timestamp() string {
 func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
 	dir, err := sshConfigDir()
 	if err != nil {
-		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no aoo_hosts"}
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no f_hosts"}
 	}
 	root, ok := gitRoot(dir)
 	if !ok {
@@ -742,7 +758,7 @@ func syncHostsConfig(stderr io.Writer) ui.SyncStatus {
 func pushHostsConfig(stderr io.Writer) ui.SyncStatus {
 	dir, err := sshConfigDir()
 	if err != nil {
-		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no aoo_hosts"}
+		return ui.SyncStatus{State: ui.SyncStateWarn, Message: "no f_hosts"}
 	}
 	root, ok := gitRoot(dir)
 	if !ok {
@@ -755,7 +771,7 @@ func pushHostsConfig(stderr io.Writer) ui.SyncStatus {
 			fmt.Fprintf(stderr, "[sync] git identity setup failed in %s: %v\n", root, err)
 			return ui.SyncStatus{State: ui.SyncStateWarn, Message: "identity failed"}
 		}
-		if err := runQuietGit(root, "commit", "-m", "Update aoo hosts"); err != nil {
+		if err := runQuietGit(root, "commit", "-m", "Update f hosts"); err != nil {
 			fmt.Fprintf(stderr, "[sync] git commit failed in %s: %v\n", root, err)
 			return ui.SyncStatus{State: ui.SyncStateWarn, Message: "commit failed"}
 		}
@@ -775,7 +791,7 @@ func gitRoot(dir string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
-	// Only auto-sync when the dedicated aoo_hosts directory itself is a
+	// Only auto-sync when the dedicated f_hosts directory itself is a
 	// repository. If it merely lives inside a parent dotfiles repo, pulling the
 	// parent can fail on unrelated local config changes and confuse the picker.
 	if filepath.Clean(root) != filepath.Clean(dir) {
@@ -786,12 +802,12 @@ func gitRoot(dir string) (string, bool) {
 
 func ensureGitIdentity(dir string) error {
 	if strings.TrimSpace(gitOutput(dir, "config", "user.name")) == "" {
-		if err := runQuietGit(dir, "config", "user.name", "aoo"); err != nil {
+		if err := runQuietGit(dir, "config", "user.name", "f"); err != nil {
 			return err
 		}
 	}
 	if strings.TrimSpace(gitOutput(dir, "config", "user.email")) == "" {
-		if err := runQuietGit(dir, "config", "user.email", "aoo@local"); err != nil {
+		if err := runQuietGit(dir, "config", "user.email", "f@local"); err != nil {
 			return err
 		}
 	}
@@ -831,13 +847,13 @@ Usage:
   %s config ui compact  use compact fzf-style UI
   %s config ui full-screen use full-screen fzf-style UI
   %s config layout top  place compact picker at top (or bottom)
-  %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/aoo_hosts
-  %s setup --adopt REPO adopt current ~/.ssh/config.d/aoo_hosts as hosts repo
+  %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/f_hosts
+  %s setup --adopt REPO adopt current ~/.ssh/config.d/f_hosts as hosts repo
 
 Add options:
   -user USER  -p PORT  --tag TAG  --desc TEXT  --args "-A -J jump"
 
-Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/aoo_hosts.
+Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/f_hosts.
 Aliases from ~/.ssh/config are shown automatically.
 `, name, name, name, name, name, name, name, name, name, name, name)
 }
@@ -875,7 +891,7 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		dir = filepath.Join(cacheDir, "aoo", "source")
+		dir = filepath.Join(cacheDir, "f", "source")
 	}
 	fmt.Fprintf(stdout, "[upgrade] repo: %s\n[upgrade] source: %s\n[upgrade] target: %s\n", safeRepoURL(*repoURL), dir, target)
 	if err := ensureUpgradeCheckout(dir, *repoURL, stdout, stderr); err != nil {
@@ -902,7 +918,7 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 	}
 	defer os.Remove(tmpPath)
 
-	ldflags := "-X aoo/internal/app.buildCommit=" + commit
+	ldflags := "-X f/internal/app.buildCommit=" + commit
 	cmd := exec.Command("go", "build", "-buildvcs=false", "-ldflags", ldflags, "-o", tmpPath, "./cmd/f")
 	cmd.Dir = dir
 	cmd.Stdout = stdout
@@ -924,10 +940,10 @@ func runUpgrade(args []string, stdout, stderr io.Writer) error {
 }
 
 func defaultUpgradeRepo() string {
-	if value := strings.TrimSpace(os.Getenv("AOO_UPGRADE_REPO")); value != "" {
+	if value := envValue("F_UPGRADE_REPO", "AOO_UPGRADE_REPO"); value != "" {
 		return value
 	}
-	return "git@git.dawq.me:sergeyb/aoo.git"
+	return "https://github.com/sergeybychkovvvpgroup-beep/f.git"
 }
 
 func safeRepoURL(repoURL string) string {

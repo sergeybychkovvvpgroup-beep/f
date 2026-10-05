@@ -1,6 +1,6 @@
-# f / aoo
+# f
 
-`f` / `aoo` is a personal OpenSSH picker with a modern `fzf`-style terminal UI.
+`f` is a personal OpenSSH picker with a modern `fzf`-style terminal UI.
 
 It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list, and runs real `ssh`. Imported SSH entries are not copied into a private host database.
 
@@ -49,9 +49,9 @@ curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/i
 f setup <ssh-config-repo-url>
 ```
 
-The installer adds `f` and the legacy `aoo` symlink. `f setup` clones the hosts repository into `~/.ssh/config.d/aoo_hosts` and ensures `~/.ssh/config` includes `~/.ssh/config.d/aoo_hosts/*.conf`.
+The installer adds the `f` binary. `f setup` clones the hosts repository into `~/.ssh/config.d/f_hosts` and ensures `~/.ssh/config` includes `~/.ssh/config.d/f_hosts/*.conf`.
 
-The built-in update checker uses the private Gitea repository `git@git.dawq.me:sergeyb/aoo.git` by default. Override it temporarily with `AOO_UPGRADE_REPO` when needed.
+The built-in update checker uses the public GitHub repository by default. Override it temporarily with `F_UPGRADE_REPO` when needed.
 
 To publish the current machine's existing hosts as the initial repository contents:
 
@@ -87,18 +87,20 @@ Keys:
 
 Normal SSH logins, jump routes, port forwards, and `RemoteCommand` entries share one fuzzy result list. There are no tabs and no `F1`–`F4` filters.
 
+Each row has a searchable kind prefix: `host:`, `cmd:`, `fwd:`, or `jump:`. Combined entries use labels such as `cmd/jump:`. A muted one-line legend in the status bar explains the prefixes without adding a help panel.
+
 ## SSH config model
 
 The expected active file is:
 
 ```text
-~/.ssh/config.d/aoo_hosts/aoo.conf
+~/.ssh/config.d/f_hosts/f.conf
 ```
 
 `~/.ssh/config` should include:
 
 ```ssh-config
-Include ~/.ssh/config.d/aoo_hosts/*.conf
+Include ~/.ssh/config.d/f_hosts/*.conf
 ```
 
 Imported entries execute through the exact alias:
@@ -111,13 +113,13 @@ This preserves OpenSSH behavior for `ProxyJump`, forwards, `RemoteCommand`, iden
 
 ## Editing and sync
 
-`Ctrl+E` exits the TUI and opens `$EDITOR` (`nano` fallback). The saved block is upserted into `~/.ssh/config.d/aoo_hosts/aoo.conf` between `# aoo-edit begin/end` markers.
+`Ctrl+E` exits the TUI and opens `$EDITOR` (`nano` fallback). The saved block is upserted into `~/.ssh/config.d/f_hosts/f.conf` between `# f-edit begin/end` markers.
 
-When `~/.ssh/config.d/aoo_hosts` is a Git repository, `aoo` pulls on startup and commits/pushes after edits or `f add`.
+When `~/.ssh/config.d/f_hosts` is a Git repository, `f` pulls on startup and commits/pushes after edits or `f add`.
 
 ## Display conventions
 
-- noisy `ssh-` and `aoo-` prefixes are hidden only in display names;
+- obsolete noisy prefixes on imported aliases are hidden only in display names;
 - route suffixes become labels such as `[netbird emergency]`, `[jump]`, and `[tunnel]`;
 - forwards include their remote endpoint;
 - real aliases and commands remain unchanged.
@@ -129,19 +131,18 @@ f add NAME HOST
 f add db 10.20.30.40 -user admin -p 2222 --args "-A -J jump"
 ```
 
-`Ctrl+N` starts interactive creation. New entries are stored as OpenSSH blocks in `~/.ssh/config.d/aoo_hosts/aoo.conf`.
+`Ctrl+N` starts interactive creation. New entries are stored as OpenSSH blocks in `~/.ssh/config.d/f_hosts/f.conf`.
 
 ## Build from source
 
 ```bash
 go test ./...
 go build -o ~/.local/bin/f ./cmd/f
-ln -sf f ~/.local/bin/aoo
 ```
 
 Production builds should embed the exact commit:
 
 ```bash
 commit=$(git rev-parse HEAD)
-go build -buildvcs=false -ldflags "-X aoo/internal/app.buildCommit=$commit" -o ~/.local/bin/f ./cmd/f
+go build -buildvcs=false -ldflags "-X f/internal/app.buildCommit=$commit" -o ~/.local/bin/f ./cmd/f
 ```

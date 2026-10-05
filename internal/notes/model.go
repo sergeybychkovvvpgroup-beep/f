@@ -99,6 +99,8 @@ func (r *RunCommands) UnmarshalYAML(node *yaml.Node) error {
 
 type Entry struct {
 	Desc         string          `yaml:"desc"`
+	Kind         string          `yaml:"-"`
+	KindSearch   string          `yaml:"-"`
 	ActionCmd    string          `yaml:"action"`
 	Text         string          `yaml:"text"`
 	Cmd          string          `yaml:"cmd"`
@@ -352,7 +354,7 @@ func (e Entry) Title() string {
 }
 
 func (e Entry) SearchFields() []string {
-	fields := []string{e.DisplayName(), e.SourceFile, e.Note, e.Text, e.ActionCmd, e.Cmd}
+	fields := []string{e.DisplayName(), e.Kind, e.KindSearch, e.SourceFile, e.Note, e.Text, e.ActionCmd, e.Cmd}
 	if e.IsGroup() {
 		fields = append(fields, e.GroupSummary)
 	}

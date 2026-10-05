@@ -1,7 +1,7 @@
 package ui
 
 // Theme is an internal fixed palette for the picker UI. It is intentionally not
-// user-configurable: aoo should behave the same on every new machine.
+// user-configurable: f should behave the same on every new machine.
 type Theme struct {
 	Name         string
 	TitleFG      string

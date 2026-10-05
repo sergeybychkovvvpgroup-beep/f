@@ -34,19 +34,33 @@ func TestShortCommit(t *testing.T) {
 	}
 }
 
-func TestDefaultUpgradeRepoUsesGitea(t *testing.T) {
+func TestDefaultUpgradeRepoUsesFRepository(t *testing.T) {
+	t.Setenv("F_UPGRADE_REPO", "")
 	t.Setenv("AOO_UPGRADE_REPO", "")
-	const want = "git@git.dawq.me:sergeyb/aoo.git"
+	const want = "https://github.com/sergeybychkovvvpgroup-beep/f.git"
 	if got := defaultUpgradeRepo(); got != want {
 		t.Fatalf("defaultUpgradeRepo = %q, want %q", got, want)
 	}
 }
 
 func TestDefaultUpgradeRepoAllowsExplicitOverride(t *testing.T) {
-	const want = "file:///tmp/aoo-test.git"
-	t.Setenv("AOO_UPGRADE_REPO", want)
+	const want = "file:///tmp/f-test.git"
+	t.Setenv("F_UPGRADE_REPO", want)
 	if got := defaultUpgradeRepo(); got != want {
 		t.Fatalf("defaultUpgradeRepo override = %q, want %q", got, want)
+	}
+}
+
+func TestUpdateCacheUsesFDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", root)
+	path, err := updateCachePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "f", "update-check.json")
+	if path != want {
+		t.Fatalf("update cache path = %q, want %q", path, want)
 	}
 }
 

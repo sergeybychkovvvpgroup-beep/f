@@ -246,6 +246,9 @@ func commandEntries(entries []Entry) []Entry {
 			}
 			out = append(out, Entry{
 				Desc:       entry.DisplayName(),
+				Kind:       entry.Kind,
+				KindSearch: entry.KindSearch,
+				Mode:       entry.Mode,
 				Actions:    []Action{actionCopy},
 				SourcePath: entry.SourcePath,
 				SourceFile: entry.SourceFile,
@@ -253,6 +256,8 @@ func commandEntries(entries []Entry) []Entry {
 				index:      entry.index,
 				searchData: []weightedField{
 					{value: normalize(entry.DisplayName()), weight: 6},
+					{value: normalize(entry.Kind), weight: 10},
+					{value: normalize(entry.KindSearch), weight: 10},
 					{value: normalize(desc), weight: 8},
 					{value: normalize(actionCopy.Cmd), weight: 9},
 				},

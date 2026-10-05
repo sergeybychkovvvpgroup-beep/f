@@ -10,11 +10,21 @@ import (
 	"strconv"
 	"strings"
 
-	"aoo/internal/notes"
+	"f/internal/notes"
 	"gopkg.in/yaml.v3"
 )
 
-const envHostsFile = "AOO_HOSTS_FILE"
+const (
+	envHostsFile       = "F_HOSTS_FILE"
+	legacyEnvHostsFile = "AOO_HOSTS_FILE"
+)
+
+func hostsFileOverride() string {
+	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
+		return value
+	}
+	return strings.TrimSpace(os.Getenv(legacyEnvHostsFile))
+}
 
 type Host struct {
 	Name          string   `yaml:"name"`
@@ -35,7 +45,7 @@ type File struct {
 }
 
 func Path() (string, error) {
-	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
+	if value := hostsFileOverride(); value != "" {
 		return filepath.Abs(value)
 	}
 	dir, err := ConfigDir()
@@ -46,7 +56,7 @@ func Path() (string, error) {
 }
 
 func ConfigDir() (string, error) {
-	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
+	if value := hostsFileOverride(); value != "" {
 		abs, err := filepath.Abs(value)
 		if err != nil {
 			return "", err
@@ -57,7 +67,7 @@ func ConfigDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "aoo", "config.d"), nil
+	return filepath.Join(dir, "f", "config.d"), nil
 }
 
 func Load() ([]Host, error) {
@@ -81,7 +91,7 @@ func Load() ([]Host, error) {
 }
 
 func hostFiles() []string {
-	if value := strings.TrimSpace(os.Getenv(envHostsFile)); value != "" {
+	if value := hostsFileOverride(); value != "" {
 		abs, err := filepath.Abs(value)
 		if err != nil {
 			return nil
@@ -200,11 +210,15 @@ func ToEntries(list []Host) []notes.Entry {
 		if mode == "" {
 			mode = classifyHostSyntax(h)
 		}
-		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd}
+		kind := entryKind(mode)
+		kindSearch := entryKindSearch(kind)
+		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd, kindSearch}
 		entries = append(entries, notes.Entry{
-			Desc: label,
-			Mode: mode,
-			Note: strings.Join(searchParts, " "),
+			Desc:       label,
+			Kind:       kind,
+			KindSearch: kindSearch,
+			Mode:       mode,
+			Note:       strings.Join(searchParts, " "),
 			Actions: []notes.Action{{
 				Desc:   detail,
 				Cmd:    cmd,
@@ -505,16 +519,10 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 
 func classifyHostSyntax(h Host) string {
 	text := " " + strings.ToLower(strings.TrimSpace(h.Args+" "+h.Cmd)) + " "
-	if strings.Contains(text, " -l ") || strings.Contains(text, " -r ") || strings.Contains(text, " -d ") || strings.Contains(text, " localforward ") || strings.Contains(text, " remoteforward ") || strings.Contains(text, " dynamicforward ") {
-		return "forwards"
-	}
-	if strings.Contains(text, " -j ") || strings.Contains(text, " proxyjump ") || strings.Contains(text, " proxycommand ") {
-		return "jumps"
-	}
-	if strings.TrimSpace(h.Cmd) != "" && !looksLikePlainSSH(h.Cmd) {
-		return "commands"
-	}
-	return "general"
+	forward := strings.Contains(text, " -l ") || strings.Contains(text, " -r ") || strings.Contains(text, " -d ") || strings.Contains(text, " localforward ") || strings.Contains(text, " remoteforward ") || strings.Contains(text, " dynamicforward ")
+	jump := strings.Contains(text, " -j ") || strings.Contains(text, " proxyjump ") || strings.Contains(text, " proxycommand ")
+	command := strings.TrimSpace(h.Cmd) != "" && !looksLikePlainSSH(h.Cmd)
+	return entryMode(forward, command, jump)
 }
 
 func looksLikePlainSSH(cmd string) bool {
@@ -523,19 +531,70 @@ func looksLikePlainSSH(cmd string) bool {
 }
 
 func classifySSHEntry(attrs map[string]string) string {
-	if hasAnySSHAttr(attrs, "localforward", "remoteforward", "dynamicforward") {
-		return "forwards"
+	forward := hasAnySSHAttr(attrs, "localforward", "remoteforward", "dynamicforward")
+	command := hasAnySSHAttr(attrs, "remotecommand")
+	jump := hasAnySSHAttr(attrs, "proxyjump", "proxycommand")
+	return entryMode(forward, command, jump)
+}
+
+func entryMode(forward, command, jump bool) string {
+	parts := make([]string, 0, 3)
+	if forward {
+		parts = append(parts, "forwards")
 	}
-	if hasAnySSHAttr(attrs, "remotecommand") {
-		if hasAnySSHAttr(attrs, "proxyjump", "proxycommand") {
-			return "commands jumps"
+	if command {
+		parts = append(parts, "commands")
+	}
+	if jump {
+		parts = append(parts, "jumps")
+	}
+	if len(parts) == 0 {
+		return "general"
+	}
+	return strings.Join(parts, " ")
+}
+
+func entryKind(mode string) string {
+	fields := strings.Fields(strings.ToLower(strings.TrimSpace(mode)))
+	has := func(want string) bool {
+		for _, field := range fields {
+			if field == want {
+				return true
+			}
 		}
-		return "commands"
+		return false
 	}
-	if hasAnySSHAttr(attrs, "proxyjump", "proxycommand") {
-		return "jumps"
+	parts := make([]string, 0, 3)
+	if has("forwards") || has("forward") || has("fwd") {
+		parts = append(parts, "fwd")
 	}
-	return "general"
+	if has("commands") || has("command") || has("cmd") {
+		parts = append(parts, "cmd")
+	}
+	if has("jumps") || has("jump") {
+		parts = append(parts, "jump")
+	}
+	if len(parts) == 0 {
+		return "host"
+	}
+	return strings.Join(parts, "/")
+}
+
+func entryKindSearch(kind string) string {
+	terms := []string{kind}
+	if strings.Contains(kind, "host") {
+		terms = append(terms, "host hosts ssh login logins")
+	}
+	if strings.Contains(kind, "cmd") {
+		terms = append(terms, "cmd command commands")
+	}
+	if strings.Contains(kind, "fwd") {
+		terms = append(terms, "fwd forward forwards tunnel tunnels")
+	}
+	if strings.Contains(kind, "jump") {
+		terms = append(terms, "jump jumps proxy bastion")
+	}
+	return strings.Join(terms, " ")
 }
 
 func hasAnySSHAttr(attrs map[string]string, keys ...string) bool {

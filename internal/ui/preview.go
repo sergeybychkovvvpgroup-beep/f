@@ -4,7 +4,7 @@ import (
 	"strings"
 	"unicode"
 
-	"aoo/internal/notes"
+	"f/internal/notes"
 	"github.com/charmbracelet/lipgloss"
 )
 

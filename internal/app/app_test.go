@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"aoo/internal/config"
-	"aoo/internal/notes"
-	"aoo/internal/ui"
+	"f/internal/config"
+	"f/internal/notes"
+	"f/internal/ui"
 )
 
 func TestPromptCommandRunPrintsCommandWithoutConfirmation(t *testing.T) {
@@ -50,8 +50,8 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "f 0.4.1" {
-		t.Fatalf("version = %q, want %q", got, "f 0.4.1")
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.5.0" {
+		t.Fatalf("version = %q, want %q", got, "f 0.5.0")
 	}
 }
 
@@ -110,5 +110,68 @@ func TestConfigLayoutSelectsBottom(t *testing.T) {
 	}
 	if cfg.Layout != "bottom" {
 		t.Fatalf("layout = %q, want bottom", cfg.Layout)
+	}
+}
+
+func TestUsageUsesFBrand(t *testing.T) {
+	oldArg0 := os.Args[0]
+	os.Args[0] = "f"
+	t.Cleanup(func() { os.Args[0] = oldArg0 })
+	var out bytes.Buffer
+	printUsage(&out)
+	text := out.String()
+	if strings.Contains(strings.ToLower(text), "aoo uses") || strings.Contains(text, "f / aoo") {
+		t.Fatalf("usage still advertises the old product name:\n%s", text)
+	}
+}
+
+func TestEditableSSHBlockUsesFBrand(t *testing.T) {
+	block, err := editableSSHBlock("test-alias")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(block, "f uses its dedicated OpenSSH") {
+		t.Fatalf("editable block does not use f branding:\n%s", block)
+	}
+	if strings.Contains(block, "# aoo uses") {
+		t.Fatalf("editable block still advertises old product name:\n%s", block)
+	}
+}
+
+func TestSSHConfigPathsUseFNames(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir, err := sshConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(home, ".ssh", "config.d", "f_hosts"); dir != want {
+		t.Fatalf("SSH config dir = %q, want %q", dir, want)
+	}
+	path, err := userSSHConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "f.conf"); path != want {
+		t.Fatalf("SSH config path = %q, want %q", path, want)
+	}
+}
+
+func TestUpsertReplacesLegacyEditMarkers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "f.conf")
+	legacy := "# aoo-edit begin server\nHost server\n  HostName old\n# aoo-edit end server\n"
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := upsertMarkedBlock(path, "server", "Host server\n  HostName new\n"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+	if strings.Contains(text, "aoo-edit") || strings.Count(text, "Host server") != 1 || !strings.Contains(text, "# f-edit begin server") {
+		t.Fatalf("legacy markers were not migrated cleanly:\n%s", text)
 	}
 }

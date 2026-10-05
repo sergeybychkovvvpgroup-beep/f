@@ -108,3 +108,52 @@ func TestSetLayoutAcceptsTopAndBottom(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderedConfigUsesFBrand(t *testing.T) {
+	rendered := renderConfig(DefaultFile())
+	if !strings.Contains(rendered, "# f — SSH host picker") {
+		t.Fatalf("config does not use f branding:\n%s", rendered)
+	}
+	if strings.Contains(rendered, "f / aoo") {
+		t.Fatalf("config still advertises the old product name:\n%s", rendered)
+	}
+}
+
+func TestConfigPathUsesFDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	t.Setenv("F_CONFIG_FILE", "")
+	t.Setenv("AOO_CONFIG_FILE", "")
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(root, "f", "config.yaml")
+	if path != want {
+		t.Fatalf("config path = %q, want %q", path, want)
+	}
+}
+
+func TestLoadMigratesLegacyConfigToFDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", root)
+	t.Setenv("F_CONFIG_FILE", "")
+	t.Setenv("AOO_CONFIG_FILE", "")
+	legacy := filepath.Join(root, "aoo", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(legacy), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacy, []byte("ui_mode: compact\nlayout: top\npicker_height: 19\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Layout != "top" || cfg.PickerHeight != 19 {
+		t.Fatalf("migrated config = %+v", cfg)
+	}
+	if _, err := os.Stat(filepath.Join(root, "f", "config.yaml")); err != nil {
+		t.Fatalf("new config was not created: %v", err)
+	}
+}
