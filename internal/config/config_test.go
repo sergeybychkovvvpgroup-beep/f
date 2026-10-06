@@ -128,6 +128,28 @@ func TestSetShowAddressAcceptsOnAndOff(t *testing.T) {
 	}
 }
 
+func TestSetPickerHeightAcceptsSixOrMore(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("F_CONFIG_FILE", path)
+	height, err := SetPickerHeight("20")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if height != 20 {
+		t.Fatalf("height = %d, want 20", height)
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PickerHeight != 20 {
+		t.Fatalf("saved picker_height = %d, want 20", cfg.PickerHeight)
+	}
+	if _, err := SetPickerHeight("5"); err == nil {
+		t.Fatal("picker height below 6 was accepted")
+	}
+}
+
 func TestSetLayoutAcceptsTopAndBottom(t *testing.T) {
 	t.Setenv("AOO_CONFIG_FILE", filepath.Join(t.TempDir(), "config.yaml"))
 	for _, want := range []string{"top", "bottom"} {

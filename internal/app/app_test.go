@@ -50,8 +50,8 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "f 0.8.1" {
-		t.Fatalf("version = %q, want %q", got, "f 0.8.1")
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.9.0" {
+		t.Fatalf("version = %q, want %q", got, "f 0.9.0")
 	}
 }
 
@@ -68,7 +68,7 @@ func TestConfigUISelectsCompactMode(t *testing.T) {
 	if cfg.UIMode != "compact" {
 		t.Fatalf("ui mode = %q, want compact", cfg.UIMode)
 	}
-	if !strings.Contains(stdout.String(), "ui mode: compact") {
+	if !strings.Contains(stdout.String(), "ui_mode: compact") {
 		t.Fatalf("unexpected output: %q", stdout.String())
 	}
 }
@@ -99,7 +99,8 @@ func TestFullScreenModeUsesAlternateScreen(t *testing.T) {
 }
 
 func TestConfigAddressEnablesMutedAddressRows(t *testing.T) {
-	t.Setenv("AOO_CONFIG_FILE", filepath.Join(t.TempDir(), "config.yaml"))
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("F_CONFIG_FILE", configPath)
 	var stdout, stderr bytes.Buffer
 	if err := Run([]string{"config", "address", "on"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
@@ -114,8 +115,53 @@ func TestConfigAddressEnablesMutedAddressRows(t *testing.T) {
 	if !pickerOptions(cfg, ui.SyncStatus{}).ShowAddress {
 		t.Fatal("picker options did not receive show_address")
 	}
-	if !strings.Contains(stdout.String(), "address mode: on") {
+	if !strings.Contains(stdout.String(), "show_address: true") || !strings.Contains(stdout.String(), configPath) {
 		t.Fatalf("unexpected output: %q", stdout.String())
+	}
+}
+
+func TestConfigWithoutSubcommandShowsCurrentSettingsAndCommands(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("F_CONFIG_FILE", configPath)
+	if err := config.Save(config.File{UIMode: "compact", Layout: "bottom", PickerHeight: 18, ShowAddress: true}); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if err := Run([]string{"config"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	text := stdout.String()
+	for _, want := range []string{
+		configPath,
+		"ui_mode: compact",
+		"layout: bottom",
+		"picker_height: 18",
+		"show_address: true",
+		"f config address on|off",
+		"f config height N",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("config output is missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestConfigHeightUpdatesPickerHeight(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("F_CONFIG_FILE", configPath)
+	var stdout, stderr bytes.Buffer
+	if err := Run([]string{"config", "height", "20"}, strings.NewReader(""), &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.PickerHeight != 20 {
+		t.Fatalf("picker_height = %d, want 20", cfg.PickerHeight)
+	}
+	if text := stdout.String(); !strings.Contains(text, "picker_height: 20") || !strings.Contains(text, configPath) {
+		t.Fatalf("height update does not identify the key and config file: %q", text)
 	}
 }
 
@@ -135,6 +181,8 @@ func TestConfigLayoutSelectsBottom(t *testing.T) {
 }
 
 func TestUsageUsesFBrand(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("F_CONFIG_FILE", configPath)
 	oldArg0 := os.Args[0]
 	os.Args[0] = "f"
 	t.Cleanup(func() { os.Args[0] = oldArg0 })
@@ -143,6 +191,11 @@ func TestUsageUsesFBrand(t *testing.T) {
 	text := out.String()
 	if strings.Contains(strings.ToLower(text), "aoo uses") || strings.Contains(text, "f / aoo") {
 		t.Fatalf("usage still advertises the old product name:\n%s", text)
+	}
+	for _, want := range []string{configPath, "f config", "f config address on|off", "f config height N", "show_address"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("usage is missing configuration guidance %q:\n%s", want, text)
+		}
 	}
 }
 

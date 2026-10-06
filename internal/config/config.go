@@ -282,6 +282,22 @@ func SetShowAddress(value string) (bool, error) {
 	return enabled, nil
 }
 
+func SetPickerHeight(value string) (int, error) {
+	height, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || height < 6 {
+		return 0, fmt.Errorf("picker height must be an integer of 6 or more")
+	}
+	cfg, err := Load()
+	if err != nil {
+		return 0, err
+	}
+	cfg.PickerHeight = height
+	if err := Save(cfg); err != nil {
+		return 0, err
+	}
+	return height, nil
+}
+
 func SetLayout(layout string) (string, error) {
 	layout = strings.TrimSpace(strings.ToLower(layout))
 	if layout != "top" && layout != "bottom" {

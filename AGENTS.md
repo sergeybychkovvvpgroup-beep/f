@@ -30,7 +30,8 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
-- `show_address: true | false` is persisted in the same file; `f config address on|off` toggles a muted `user@host:port` row beneath each name.
+- `show_address: true | false` is persisted in the same file; `f config address on|off` toggles a muted `└ user@host:port` row beneath each name.
+- `f config` and `f config show` print the current UI settings, exact config file, SSH inventory paths, and available setters. Every setter prints the persisted YAML key and config path; `f config height N` sets `picker_height` with a minimum of 6.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
 - `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. Do not revive legacy `two_line_results`; `show_address` is its narrow supported replacement.
@@ -50,11 +51,14 @@ Keys:
 
 ```text
 Enter        run selected command
+Tab          open/close selected entry details
 Ctrl+Y       print command only
 e            edit selected SSH config block
 Ctrl+N       add custom host
 Esc/Ctrl+C   quit
 ```
+
+The `Tab` view shows the selected entry name, address, kind/mode, action description, complete multiline command, and source location. Long details scroll with `Up`/`Down` or `Ctrl+K`/`Ctrl+J`; `Tab` or `Esc` returns to the unchanged result list and `Enter` still runs the entry.
 
 `e` currently exits TUI and opens `$EDITOR`/`nano`. This was intentional: SSH config blocks are multiline and editor-based editing is safer than a hurried inline modal. A later Bubble Tea popup may reuse the same read/write logic.
 

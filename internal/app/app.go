@@ -20,7 +20,7 @@ import (
 )
 
 var (
-	version     = "0.8.1"
+	version     = "0.9.0"
 	buildCommit = "unknown"
 )
 
@@ -535,12 +535,8 @@ func (m *multiFlag) Set(v string) error {
 }
 
 func runConfig(args []string, stdout, stderr io.Writer) error {
-	if len(args) > 0 && args[0] == "show" {
-		cfgPath, _ := config.ConfigPath()
-		sshDir, _ := sshConfigDir()
-		sshPath, _ := userSSHConfigPath()
-		fmt.Fprintf(stdout, "config file: %s\nssh hosts dir: %s\ndefault edit file: %s\n", cfgPath, sshDir, sshPath)
-		return nil
+	if len(args) == 0 || (len(args) == 1 && (args[0] == "show" || args[0] == "help" || args[0] == "--help" || args[0] == "-h")) {
+		return printConfig(stdout)
 	}
 	if len(args) > 0 && args[0] == "sync" {
 		status := syncHostsConfig(stderr)
@@ -556,30 +552,54 @@ func runConfig(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "ui mode: %s\n", mode)
-		return nil
+		return printConfigChange(stdout, "ui_mode", mode)
 	}
 	if len(args) == 2 && args[0] == "address" {
 		enabled, err := config.SetShowAddress(args[1])
 		if err != nil {
 			return err
 		}
-		state := "off"
-		if enabled {
-			state = "on"
-		}
-		fmt.Fprintf(stdout, "address mode: %s\n", state)
-		return nil
+		return printConfigChange(stdout, "show_address", strconv.FormatBool(enabled))
 	}
 	if len(args) == 2 && args[0] == "layout" {
 		layout, err := config.SetLayout(args[1])
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(stdout, "layout: %s\n", layout)
-		return nil
+		return printConfigChange(stdout, "layout", layout)
 	}
-	return errors.New("usage: f config show|sync|ui compact|full-screen|layout top|bottom|address on|off")
+	if len(args) == 2 && args[0] == "height" {
+		height, err := config.SetPickerHeight(args[1])
+		if err != nil {
+			return err
+		}
+		return printConfigChange(stdout, "picker_height", strconv.Itoa(height))
+	}
+	return errors.New("usage: f config [show|sync|ui compact|full-screen|layout top|bottom|height N|address on|off]")
+}
+
+func printConfigChange(stdout io.Writer, key, value string) error {
+	path, err := config.ConfigPath()
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "%s: %s\nconfig file: %s\n", key, value, path)
+	return err
+}
+
+func printConfig(stdout io.Writer) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
+	cfgPath, err := config.ConfigPath()
+	if err != nil {
+		return err
+	}
+	sshDir, _ := sshConfigDir()
+	sshPath, _ := userSSHConfigPath()
+	fmt.Fprintf(stdout, "Configuration\n  file: %s\n  ui_mode: %s\n  layout: %s\n  picker_height: %d\n  show_address: %t\n\nSSH inventory\n  directory: %s\n  default edit file: %s\n\nCommands\n  f config ui compact|full-screen\n  f config layout top|bottom\n  f config height N\n  f config address on|off\n  f config sync\n", cfgPath, cfg.UIMode, cfg.Layout, cfg.PickerHeight, cfg.ShowAddress, sshDir, sshPath)
+	return nil
 }
 
 func runSetup(args []string, stdout, stderr io.Writer) error {
@@ -848,6 +868,7 @@ func gitOutput(dir string, args ...string) string {
 
 func printUsage(w io.Writer) {
 	name := cliName()
+	cfgPath, _ := config.ConfigPath()
 	fmt.Fprintf(w, `%s — quick SSH host picker
 
 Usage:
@@ -856,11 +877,14 @@ Usage:
   Ctrl+N in picker      add a new login variant interactively
   %s add NAME HOST      also works for scripted adding
   %s list               print saved/imported hosts
-  %s config show        show config/hosts paths
+  %s config             show current settings, paths, and config commands
+  %s config show        same as "config"
   %s config ui compact  use compact fzf-style UI
   %s config ui full-screen use full-screen fzf-style UI
   %s config layout top  place compact picker at top (or bottom)
-  %s config address on  show a muted SSH address below each name (or off)
+  %s config height N    set compact picker height (minimum 6)
+  %s config address on|off
+                         set show_address in the config file
   %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/f_hosts
   %s setup --adopt REPO adopt current ~/.ssh/config.d/f_hosts as hosts repo
 
@@ -869,7 +893,10 @@ Add options:
 
 Hosts are kept as normal OpenSSH config files in ~/.ssh/config.d/f_hosts.
 Aliases from ~/.ssh/config are shown automatically.
-`, name, name, name, name, name, name, name, name, name, name, name, name)
+
+Configuration file:
+  %s
+`, name, name, name, name, name, name, name, name, name, name, name, name, name, name, cfgPath)
 }
 
 func cliName() string {

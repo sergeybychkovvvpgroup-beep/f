@@ -11,9 +11,10 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line results by default, or an optional muted SSH address below each name;
+- single-line results by default, or an optional muted `└ user@host:port` address below each name;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
+- `Tab` detail view with the complete command, address, mode, description, and source location;
 - muted key-binding line without tabs or preview panes.
 
 Choose the size:
@@ -79,18 +80,23 @@ f                       # open picker
 f prod db               # start with a query
 f list                  # print known entries
 f config show           # show config paths
+f config                # show current settings, paths, and available config commands
 f config sync           # pull host changes
 f config ui compact     # compact UI
 f config ui full-screen # full-screen UI
 f config layout bottom  # compact at bottom
 f config layout top     # compact at top
+f config height 20      # compact picker height (minimum 6)
 f config address on     # node address below the name
 ```
+
+The settings are stored in `~/.config/f/config.yaml` (or the path printed by `f config`). The address command changes the YAML key `show_address`; every modifying config command prints the changed key and the exact file path.
 
 Keys:
 
 - type to filter;
 - `↑` / `↓`, `Ctrl+K` / `Ctrl+J` to move through results in visual top-to-bottom order in every layout;
+- `Tab` to open or close details for the selected entry; `↑` / `↓` scroll long details and `Esc` returns to the list;
 - `Enter` to run the selected SSH command;
 - `Ctrl+Y` / `Alt+Enter` to print without running;
 - `Ctrl+E` / `Alt+E` to edit the selected SSH config block;

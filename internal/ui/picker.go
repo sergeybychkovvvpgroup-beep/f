@@ -38,6 +38,8 @@ type PickerModel struct {
 	syncStream   <-chan SyncStatus
 	activeKind   string
 	spinner      spinner.Model
+	details      bool
+	detailOffset int
 }
 
 type syncPollMsg struct{}
@@ -115,7 +117,49 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.KeyMsg:
+		if m.details {
+			switch msg.String() {
+			case "tab", "esc":
+				m.details = false
+				m.detailOffset = 0
+				return m, nil
+			case "up", "ctrl+k":
+				if m.detailOffset > 0 {
+					m.detailOffset--
+				}
+				return m, nil
+			case "down", "ctrl+j":
+				m.detailOffset++
+				return m, nil
+			case "enter", "ctrl+enter", "alt+enter", "ctrl+y":
+				if len(m.matches) == 0 {
+					return m, nil
+				}
+				entry := m.matches[m.cursor].Entry
+				m.selected = &entry
+				m.selectedLine = entry.PreviewHitLine(m.preview, m.activePreviewHit())
+				m.printOnly = isPrintOnlyKey(msg.String())
+				return m, tea.Quit
+			case "ctrl+e", "alt+e":
+				if len(m.matches) == 0 {
+					return m, nil
+				}
+				entry := m.matches[m.cursor].Entry
+				m.selected = &entry
+				m.selectedLine = entry.PreviewHitLine(m.preview, m.activePreviewHit())
+				m.edit = true
+				return m, tea.Quit
+			default:
+				return m, nil
+			}
+		}
 		switch msg.String() {
+		case "tab":
+			if len(m.matches) > 0 {
+				m.details = true
+				m.detailOffset = 0
+			}
+			return m, nil
 		case "f1":
 			m.activeKind = "all"
 			m.refresh()
@@ -192,6 +236,9 @@ func (m PickerModel) View() string {
 	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.DetailFG))
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG))
 	contentWidth := m.contentWidth()
+	if m.details {
+		return m.detailsView(contentWidth, rowStyle, detailStyle, statusStyle)
+	}
 
 	input := m.input
 	input.Width = m.inputWidth()
@@ -224,6 +271,82 @@ func (m PickerModel) View() string {
 	}
 	content := strings.Join(clipLines(lines, m.effectiveHeight()), "\n")
 	return lipgloss.NewStyle().MarginLeft(2).Render(content)
+}
+
+func (m PickerModel) detailsView(width int, rowStyle, detailStyle, statusStyle lipgloss.Style) string {
+	if len(m.matches) == 0 || m.cursor < 0 || m.cursor >= len(m.matches) {
+		return lipgloss.NewStyle().MarginLeft(2).Render(detailStyle.Render("No details"))
+	}
+	entry := m.matches[m.cursor].Entry
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#171717")).
+		Background(lipgloss.Color(m.theme.InputPrompt)).
+		Bold(true).
+		Padding(0, 1).
+		Render("DETAILS")
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG)).Bold(true)
+	lines := []string{badge}
+	lines = appendDetailField(lines, "Name", entry.DisplayName(), width, labelStyle, rowStyle)
+	lines = appendDetailField(lines, "Address", entry.Address, width, labelStyle, detailStyle)
+	lines = appendDetailField(lines, "Type", entry.Kind, width, labelStyle, rowStyle)
+	lines = appendDetailField(lines, "Mode", entry.Mode, width, labelStyle, rowStyle)
+	if action := entry.PrimaryAction(); action != nil {
+		lines = appendDetailField(lines, "About", action.Desc, width, labelStyle, rowStyle)
+		if command := strings.TrimSpace(action.Cmd); command != "" {
+			lines = append(lines, labelStyle.Render("Command"))
+			for _, line := range commandPreviewLines(command, maxInt(8, width-2)) {
+				lines = append(lines, rowStyle.Render("  "+line))
+			}
+		}
+	}
+	if source := detailSource(entry); source != "" {
+		lines = appendDetailField(lines, "Source", source, width, labelStyle, detailStyle)
+	}
+	footerText := "↑/↓ scroll  •  Tab/Esc back  •  Enter run  •  Ctrl+Y print"
+	maximum := m.effectiveHeight()
+	visibleBody := maxInt(1, maximum-1)
+	if len(lines) > visibleBody {
+		maxOffset := len(lines) - visibleBody
+		start := minInt(maxInt(0, m.detailOffset), maxOffset)
+		lines = append([]string(nil), lines[start:start+visibleBody]...)
+		footerText = fmt.Sprintf("↑/↓ scroll %d/%d  •  Tab/Esc back  •  Enter run", start+1, maxOffset+1)
+	}
+	footer := statusStyle.Render(footerText)
+	lines = append(lines, footer)
+	if m.options.FullScreen {
+		for len(lines) < maximum {
+			lines = append(lines, "")
+		}
+	}
+	content := strings.Join(clipLines(lines, maximum), "\n")
+	return lipgloss.NewStyle().MarginLeft(2).Render(content)
+}
+
+func appendDetailField(lines []string, label, value string, width int, labelStyle, valueStyle lipgloss.Style) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return lines
+	}
+	prefix := label + "  "
+	valueWidth := maxInt(8, width-utf8.RuneCountInString(prefix))
+	wrapped := wrapText(value, valueWidth)
+	lines = append(lines, labelStyle.Render(prefix)+valueStyle.Render(wrapped[0]))
+	indent := strings.Repeat(" ", utf8.RuneCountInString(prefix))
+	for _, line := range wrapped[1:] {
+		lines = append(lines, valueStyle.Render(indent+line))
+	}
+	return lines
+}
+
+func detailSource(entry notes.Entry) string {
+	source := strings.TrimSpace(entry.SourcePath)
+	if source == "" {
+		source = strings.TrimSpace(entry.SourceFile)
+	}
+	if source != "" && entry.SourceLine > 0 {
+		return fmt.Sprintf("%s:%d", source, entry.SourceLine)
+	}
+	return source
 }
 
 func (m PickerModel) renderHeader(width int) string {
@@ -539,6 +662,7 @@ func (m PickerModel) renderStatusBar(baseStyle lipgloss.Style) string {
 		}
 		parts = append(parts, style.Render(item.key+" "+item.label))
 	}
+	parts = append(parts, baseStyle.Render("Tab details"))
 	return strings.Join(parts, baseStyle.Render("  •  "))
 }
 
@@ -801,10 +925,10 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 
 func (m PickerModel) addressLine(address string, width int, detailStyle lipgloss.Style) string {
 	address = strings.Join(strings.Fields(strings.TrimSpace(address)), " ")
-	address = truncateRunes(address, maxInt(0, width-2))
+	address = truncateRunes(address, maxInt(0, width-4))
 	query := strings.TrimSpace(m.input.Value())
 	matchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-	return detailStyle.Render("  ") + renderFuzzyText(address, query, detailStyle, matchStyle)
+	return detailStyle.Render("  └ ") + renderFuzzyText(address, query, detailStyle, matchStyle)
 }
 
 func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, width int, selected bool, rowStyle, selectedStyle, detailStyle lipgloss.Style) string {

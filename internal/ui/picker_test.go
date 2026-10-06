@@ -35,7 +35,7 @@ func TestPickerShowsMutedAddressBelowNameWhenEnabled(t *testing.T) {
 	lines := strings.Split(plain, "\n")
 	found := false
 	for i := 0; i+1 < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "│ gateway" && strings.TrimSpace(lines[i+1]) == "operator@192.0.2.10:2222" {
+		if strings.TrimSpace(lines[i]) == "│ gateway" && strings.TrimSpace(lines[i+1]) == "└ operator@192.0.2.10:2222" {
 			found = true
 			break
 		}
@@ -168,6 +168,88 @@ func TestPickerViewUsesMinimalBubbleTeaPanel(t *testing.T) {
 	}
 	if !strings.Contains(view, "> prod") || !strings.Contains(view, "all") {
 		t.Fatalf("minimal panel is missing query or compact status: %q", view)
+	}
+}
+
+func TestTabOpensDetailedEntryView(t *testing.T) {
+	entry := notes.Entry{
+		Desc:       "gateway",
+		Address:    "operator@192.0.2.10:2222",
+		Kind:       "cmd",
+		Mode:       "commands jumps",
+		SourcePath: "/home/operator/.ssh/config.d/f_hosts/f.conf",
+		SourceLine: 42,
+		Actions: []notes.Action{{
+			Desc: "show remote routing table",
+			Cmd:  "ssh -p 2222 -J operator@jump.example operator@192.0.2.10 show ip route table main",
+		}},
+	}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 18, ShowAddress: true})
+	m.width, m.height = 100, 18
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	details := updated.(PickerModel)
+	if !details.details {
+		t.Fatal("Tab did not open the detailed entry view")
+	}
+	plain := stripANSI(details.View())
+	for _, want := range []string{
+		"DETAILS", "gateway", "operator@192.0.2.10:2222", "commands jumps",
+		"show remote routing table", "ssh -p 2222 -J operator@jump.example operator@192.0.2.10 show ip route table main",
+		"/home/operator/.ssh/config.d/f_hosts/f.conf:42", "Tab/Esc back", "Enter run",
+	} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("detail view is missing %q: %q", want, plain)
+		}
+	}
+}
+
+func TestTabAndEscapeReturnFromDetailedEntryView(t *testing.T) {
+	entry := notes.Entry{Desc: "gateway", Address: "operator@192.0.2.10", Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 10})
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	closedByTab, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyTab})
+	if closedByTab.(PickerModel).details {
+		t.Fatal("second Tab did not return to the list")
+	}
+	opened, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	closedByEscape, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := closedByEscape.(PickerModel)
+	if got.details || got.cancelled {
+		t.Fatal("Escape from details must return to the list without cancelling the picker")
+	}
+}
+
+func TestEnterRunsSelectedEntryFromDetails(t *testing.T) {
+	entry := notes.Entry{Desc: "gateway", Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 10})
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, cmd := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEnter})
+	got := updated.(PickerModel)
+	if cmd == nil || got.selected == nil || got.selected.Desc != "gateway" {
+		t.Fatalf("Enter from details did not select the entry: cmd=%v selected=%+v", cmd, got.selected)
+	}
+}
+
+func TestDetailedCommandCanScrollToFinalLine(t *testing.T) {
+	entry := notes.Entry{
+		Desc: "gateway",
+		Actions: []notes.Action{{
+			Cmd: "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null operator@192.0.2.10 alpha beta gamma delta epsilon final-token",
+		}},
+	}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 42, 8
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	details := opened.(PickerModel)
+	if strings.Contains(stripANSI(details.View()), "final-token") {
+		t.Fatal("long command unexpectedly fits before scrolling")
+	}
+	for range 30 {
+		updated, _ := details.Update(tea.KeyMsg{Type: tea.KeyDown})
+		details = updated.(PickerModel)
+	}
+	if plain := stripANSI(details.View()); !strings.Contains(plain, "final-token") {
+		t.Fatalf("scrolling details did not reveal the full command tail: %q", plain)
 	}
 }
 
