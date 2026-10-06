@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line results with the composed command after an interpunct: `name · ssh user@host`; every directive from the selected concrete `Host` block is represented in OpenSSH-safe form as `-o Key=Value`, while `HostName` and `User` form the target;
+- single-line results with the composed command after an interpunct: `name · ssh user@host`; every directive from the selected concrete `Host` block is represented in OpenSSH-safe form as `-o Key=Value`, while `HostName` and `User` form the target; long commands are shortened in the middle so the command prefix and final target remain visible, with the complete command available in `Tab` details;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - `Tab` detail view with the complete command, address, mode, description, and source location;

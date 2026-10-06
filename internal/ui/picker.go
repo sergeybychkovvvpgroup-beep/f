@@ -13,6 +13,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/rivo/uniseg"
 )
 
 type PickerModel struct {
@@ -818,6 +819,57 @@ func truncateRunes(value string, limit int) string {
 	return ansi.Truncate(value, limit, "…")
 }
 
+func truncateMiddleRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(value) <= limit {
+		return value
+	}
+	if limit == 1 {
+		return "…"
+	}
+
+	const minPrefix = 8
+	suffixWidth := (limit - 1) / 3
+	if split := strings.LastIndex(value, " "); split >= 0 {
+		targetWidth := ansi.StringWidth(strings.TrimSpace(value[split+1:]))
+		if targetWidth > 0 && targetWidth <= limit-1-minPrefix {
+			suffixWidth = targetWidth
+		}
+	}
+	if suffixWidth < 1 {
+		suffixWidth = 1
+	}
+	prefixWidth := limit - 1 - suffixWidth
+	return ansi.Truncate(value, prefixWidth, "") + "…" + truncateLeftWidth(value, suffixWidth)
+}
+
+func truncateLeftWidth(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	if ansi.StringWidth(value) <= limit {
+		return value
+	}
+	graphemes := uniseg.NewGraphemes(value)
+	clusters := make([]string, 0, utf8.RuneCountInString(value))
+	for graphemes.Next() {
+		clusters = append(clusters, graphemes.Str())
+	}
+	width := 0
+	start := len(clusters)
+	for start > 0 {
+		clusterWidth := ansi.StringWidth(clusters[start-1])
+		if width+clusterWidth > limit {
+			break
+		}
+		start--
+		width += clusterWidth
+	}
+	return strings.Join(clusters[start:], "")
+}
+
 func padRight(value string, width int) string {
 	length := utf8.RuneCountInString(value)
 	if length >= width {
@@ -957,7 +1009,7 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 		prefix = m.theme.SelectedMark + " "
 	}
 	rowWidth := maxInt(12, width)
-	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix))
+	contentWidth := maxInt(8, rowWidth-ansi.StringWidth(prefix))
 	labelText := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
 
 	detailText := match.Detail
@@ -993,7 +1045,7 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	if secondary == "" || combined == primary {
 		matchStyle := primaryStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
 		rendered := primaryStyle.Render(prefix) + renderFuzzyText(combined, query, primaryStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
+		padding := rowWidth - ansi.StringWidth(prefix+combined)
 		if padding > 0 {
 			rendered += primaryStyle.Render(strings.Repeat(" ", padding))
 		}
@@ -1007,7 +1059,7 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	}
 	first := string(combinedRunes[:split])
 	second := string(combinedRunes[split:])
-	visible := utf8.RuneCountInString(prefix+first) + utf8.RuneCountInString(second)
+	visible := ansi.StringWidth(prefix + first + second)
 	if visible < rowWidth {
 		second += strings.Repeat(" ", rowWidth-visible)
 	}
@@ -1087,8 +1139,8 @@ func compactResultLine(primary, secondary string, width int) string {
 	}
 	maxSecondaryWidth := availableSecondaryWidth
 
-	secondary = truncateRunes(secondary, maxSecondaryWidth)
-	secondaryWidth := utf8.RuneCountInString(secondary)
+	secondary = truncateMiddleRunes(secondary, maxSecondaryWidth)
+	secondaryWidth := ansi.StringWidth(secondary)
 	if secondaryWidth == 0 {
 		return truncateRunes(primary, width)
 	}
@@ -1119,8 +1171,8 @@ func compactResultSplit(primary, secondary string, width int) int {
 	}
 	maxSecondaryWidth := availableSecondaryWidth
 
-	secondary = truncateRunes(secondary, maxSecondaryWidth)
-	secondaryWidth := utf8.RuneCountInString(secondary)
+	secondary = truncateMiddleRunes(secondary, maxSecondaryWidth)
+	secondaryWidth := ansi.StringWidth(secondary)
 	if secondaryWidth == 0 {
 		return utf8.RuneCountInString(truncateRunes(primary, width))
 	}

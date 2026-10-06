@@ -30,7 +30,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
-- `show_address: true | false` is persisted in the same file; `f config address on|off` toggles a muted inline `name · user@host:port` result.
+- `show_address: true | false` is the compatibility name persisted in the same file; `f config address on|off` toggles an inline `name · <composed command>` result.
 - `f config` and `f config show` print the current UI settings, exact config file, SSH inventory paths, and available setters. Every setter prints the persisted YAML key and config path; `f config height N` sets `picker_height` with a minimum of 6.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
@@ -53,14 +53,14 @@ Keys:
 Enter        run selected command
 Tab          open/close selected entry details
 Ctrl+Y       print command only
-e            edit selected SSH config block
+Ctrl+E       edit the complete source SSH config at the selected line
 Ctrl+N       add custom host
 Esc/Ctrl+C   quit
 ```
 
 The `Tab` view shows the selected entry name, address, kind/mode, action description, complete multiline command, and source location. Long details scroll with `Up`/`Down` or `Ctrl+K`/`Ctrl+J`; `q` or `Tab` returns to the unchanged result list, `Esc` has no details action, and `Enter` still runs the entry.
 
-`e` currently exits TUI and opens `$EDITOR`/`nano`. This was intentional: SSH config blocks are multiline and editor-based editing is safer than a hurried inline modal. A later Bubble Tea popup may reuse the same read/write logic.
+`Ctrl+E` exits TUI and opens the complete `SourcePath` in `$EDITOR`/`nano` at `SourceLine`, so the operator sees the full inventory and surrounding entries. Validate the edited source with `ssh -G -F`; restore the original bytes on failure. Do not reintroduce a generated temporary one-block editor.
 
 ## Execution model
 
@@ -103,23 +103,7 @@ Entries retain internal classification for display and preview metadata, but cla
 - `RemoteCommand` -> commands;
 - `ProxyJump`, `ProxyCommand` -> jumps.
 
-Expanded command generation should include important directives:
-
-- `-p` for non-default port;
-- `-J` for `ProxyJump`;
-- `-L` / `-R` / `-D` for forwards;
-- `-i` for identity file when explicitly present;
-- selected `-o` options such as legacy algorithms and known_hosts behavior;
-- remote command as trailing command.
-
-Long commands should render multiline with backslashes. Group flag/value pairs together, for example:
-
-```bash
-ssh \
-  -J sergeyb@100.126.127.82 \
-  -L 8443 10.117.100.10:443 \
-  root@192.168.11.10
-```
+Expanded command generation must preserve every directive in the selected concrete `Host` block. Render `HostName`/`User` as the target and every other directive in source order as shell-safe `-o Key=Value`. Execution still uses the alias. When a composed command does not fit on one result row, truncate its middle with `…` while preserving both the command prefix and final target; the complete command remains available in `Tab` details.
 
 ## Host storage and sync
 

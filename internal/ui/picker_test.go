@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/cursor"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 )
 
@@ -79,6 +80,49 @@ func TestWideResultUsesAvailableSpaceForFullCommand(t *testing.T) {
 	got := compactResultLine("gateway", command, 140)
 	if !strings.Contains(got, command) || strings.Contains(got, "…") {
 		t.Fatalf("wide result truncated the full command: %q", got)
+	}
+}
+
+func TestNarrowResultKeepsCommandStartAndTarget(t *testing.T) {
+	command := "ssh -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa root@192.0.2.10"
+	got := compactResultLine("legacy-router", command, 64)
+	if !strings.Contains(got, "ssh -o") || !strings.Contains(got, "root@192.0.2.10") || !strings.Contains(got, "…") {
+		t.Fatalf("middle truncation did not preserve command start and target: %q", got)
+	}
+	if utf8.RuneCountInString(got) > 64 {
+		t.Fatalf("result width = %d, want <= 64: %q", utf8.RuneCountInString(got), got)
+	}
+}
+
+func TestMiddleTruncationRespectsTerminalWidthForWideRunes(t *testing.T) {
+	command := "ssh " + strings.Repeat("界", 30) + " operator@192.0.2.10"
+	got := compactResultLine("東京-router", command, 64)
+	if width := ansi.StringWidth(got); width > 64 {
+		t.Fatalf("terminal width = %d, want <= 64: %q", width, got)
+	}
+	if !strings.Contains(got, "operator@192.0.2.10") {
+		t.Fatalf("middle truncation lost target: %q", got)
+	}
+}
+
+func TestRenderedAddressRowRespectsTerminalWidthForWideRunes(t *testing.T) {
+	theme := DefaultTheme()
+	entry := notes.Entry{Desc: "東京-router", Command: "ssh " + strings.Repeat("界", 30) + " operator@192.0.2.10"}
+	match := notes.Match{Entry: entry, Label: entry.Desc, Detail: entry.Command}
+	m := PickerModel{options: Options{ShowAddress: true}, theme: theme}
+	style := lipgloss.NewStyle()
+	got := m.renderMatchLabelLine(match, entry, 64, false, style, style, style)
+	if width := ansi.StringWidth(got); width > 64 {
+		t.Fatalf("rendered terminal width = %d, want <= 64: %q", width, got)
+	}
+}
+
+func TestTruncateLeftWidthPreservesGraphemeClusters(t *testing.T) {
+	if got := truncateLeftWidth("prefix👩‍💻", 2); got != "👩‍💻" {
+		t.Fatalf("ZWJ emoji was split: %q", got)
+	}
+	if got := truncateLeftWidth("prefix🇺🇸", 1); got != "" {
+		t.Fatalf("flag grapheme was split: %q", got)
 	}
 }
 

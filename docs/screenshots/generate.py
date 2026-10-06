@@ -61,7 +61,7 @@ commands = [
 
 save("compact-top.png", (1060, 264), "COMPACT · TOP", "COMMANDS   4 / 117", "status", commands, selected=0)
 save("compact-bottom.png", (1060, 264), "COMPACT · BOTTOM", "COMMANDS   4 / 117", "status", commands, selected=0, bottom=True)
-save("compact-top-address.png", (1060, 184), "COMPACT · COMMANDS", "SSH   1 / 117", "data", [("data-node", "ssh operator@192.0.2.50")], selected=0)
+save("compact-top-address.png", (1060, 184), "COMPACT · COMMANDS", "SSH   1 / 117", "data", [("data-node", "ssh -o ProxyJump=access.example -o ServerAliveInterval=30…operator@192.0.2.50")], selected=0)
 save("full-screen.png", (1060, 624), "FULL-SCREEN", "SSH   6 / 117", "", [
     ("server-console", "ssh admin@192.0.2.60"),
     ("web [tunnel]", "ssh -o 'LocalForward=8443 198.51.100.20:443' ops@192.0.2.30"),
