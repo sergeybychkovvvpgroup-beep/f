@@ -19,7 +19,7 @@ func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	}
 }
 
-func TestPickerShowsPlainMutedAddressBelowNameWhenEnabled(t *testing.T) {
+func TestPickerShowsMutedAddressInlineAfterInterpunctWhenEnabled(t *testing.T) {
 	entry := notes.Entry{
 		Desc:    "gateway",
 		Address: "operator@192.0.2.10:2222",
@@ -28,23 +28,15 @@ func TestPickerShowsPlainMutedAddressBelowNameWhenEnabled(t *testing.T) {
 	}
 	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
 	m.width, m.height = 100, 8
-	if got := m.resultRowHeight(); got != 2 {
-		t.Fatalf("address mode row height = %d, want 2", got)
+	if got := m.resultRowHeight(); got != 1 {
+		t.Fatalf("address mode row height = %d, want 1", got)
 	}
 	plain := stripANSI(m.View())
-	lines := strings.Split(plain, "\n")
-	found := false
-	for i := 0; i+1 < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "│ gateway" && strings.TrimSpace(lines[i+1]) == "operator@192.0.2.10:2222" {
-			found = true
-			break
-		}
+	if !strings.Contains(plain, "│ gateway · operator@192.0.2.10:2222") {
+		t.Fatalf("address is not rendered inline after an interpunct: %q", plain)
 	}
-	if !found {
-		t.Fatalf("address is not rendered below the name: %q", plain)
-	}
-	if strings.Contains(plain, "└") {
-		t.Fatalf("address row still contains a noisy tree marker: %q", plain)
+	if strings.Contains(plain, "\n    operator@192.0.2.10:2222") {
+		t.Fatalf("address is still rendered on a second line: %q", plain)
 	}
 }
 

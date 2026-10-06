@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line results by default, or an optional plain muted `user@host:port` address below each name;
+- single-line results with an optional muted address after an interpunct: `name · user@host:port`;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - `Tab` detail view with the complete command, address, mode, description, and source location;
@@ -31,11 +31,11 @@ f config layout bottom
 f config layout top
 ```
 
-Show a muted `user@host:port` address below each entry name:
+Show a muted address inline after each entry name:
 
 ```bash
 f config address on
-f config address off     # return to single-line results
+f config address off     # hide inline addresses
 ```
 
 Legacy config values migrate automatically: `light` → `compact`, `full` → `full-screen`.
@@ -48,7 +48,7 @@ Legacy config values migrate automatically: `light` → `compact`, `full` → `f
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
-### Compact, top with address rows
+### Compact, top with inline addresses
 
 ![Compact picker with muted SSH addresses](docs/screenshots/compact-top-address.png)
 
@@ -87,7 +87,7 @@ f config ui full-screen # full-screen UI
 f config layout bottom  # compact at bottom
 f config layout top     # compact at top
 f config height 20      # compact picker height (minimum 6)
-f config address on     # node address below the name
+f config address on     # name · user@host:port
 ```
 
 The settings are stored in `~/.config/f/config.yaml` (or the path printed by `f config`). The address command changes the YAML key `show_address`; every modifying config command prints the changed key and the exact file path.

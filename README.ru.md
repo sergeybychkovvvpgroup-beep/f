@@ -11,7 +11,7 @@
 - небольшой цветной badge активной категории и счётчик;
 - строка запроса без заливки фона и инверсного блочного курсора, чтобы на прозрачном фоне терминала не появлялось чёрное пятно;
 - счётчик совпадений;
-- одноcтрочный список по умолчанию или двухстрочный режим с простым приглушённым адресом `user@host:port` под именем;
+- одноcтрочный список с опциональным приглушённым адресом через интерпункт: `name · user@host:port`;
 - цветное выделение совпавших символов;
 - тонкий цветной маркер выбранной строки;
 - подробный просмотр по `Tab` с полной командой, адресом, режимом, описанием и исходным файлом;
@@ -31,11 +31,11 @@ f config layout bottom   # внизу экрана
 f config layout top      # вверху экрана
 ```
 
-Показывать под именем записи приглушённый адрес `user@host:port`:
+Показывать приглушённый адрес в одной строке после имени:
 
 ```bash
 f config address on
-f config address off     # вернуться к однострочному списку
+f config address off     # скрыть адреса
 ```
 
 Старые значения конфигурации мигрируют автоматически: `light` → `compact`, `full` → `full-screen`.
@@ -48,7 +48,7 @@ f config address off     # вернуться к однострочному сп
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
-### Compact, top с адресами
+### Compact, top с адресами в строке
 
 ![Compact picker с приглушёнными SSH-адресами](docs/screenshots/compact-top-address.png)
 
@@ -94,7 +94,7 @@ f config ui full-screen # полноэкранный UI
 f config layout bottom  # compact снизу
 f config layout top     # compact сверху
 f config height 20      # высота compact picker, минимум 6
-f config address on     # адрес узла под именем
+f config address on     # name · user@host:port
 ```
 
 Настройки хранятся в `~/.config/f/config.yaml` (или по пути, который выводит `f config`). Команда адреса изменяет YAML-ключ `show_address`; каждая изменяющая команда выводит изменённый ключ и точный путь к файлу.

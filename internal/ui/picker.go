@@ -667,14 +667,7 @@ func (m PickerModel) showInlinePreview() bool {
 }
 
 func (m PickerModel) resultRowHeight() int {
-	if !m.twoLineResults() {
-		return 1
-	}
-	return 2
-}
-
-func (m PickerModel) twoLineResults() bool {
-	return m.options.ShowAddress
+	return 1
 }
 
 func (m PickerModel) statusLine() string {
@@ -942,9 +935,6 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		entry := match.Entry
 		selected := index == m.cursor
 		rowLines := []string{m.renderMatchLabelLine(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)}
-		if m.twoLineResults() {
-			rowLines = append(rowLines, m.addressLine(entry.Address, width, detailStyle))
-		}
 		rows = append(rows, renderedRow{lines: rowLines})
 	}
 
@@ -955,14 +945,6 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 	return lines
 }
 
-func (m PickerModel) addressLine(address string, width int, detailStyle lipgloss.Style) string {
-	address = strings.Join(strings.Fields(strings.TrimSpace(address)), " ")
-	address = truncateRunes(address, maxInt(0, width-4))
-	query := strings.TrimSpace(m.input.Value())
-	matchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-	return detailStyle.Render("    ") + renderFuzzyText(address, query, detailStyle, matchStyle)
-}
-
 func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, width int, selected bool, rowStyle, selectedStyle, detailStyle lipgloss.Style) string {
 	prefix := "  "
 	if selected {
@@ -971,23 +953,11 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	rowWidth := maxInt(12, width)
 	contentWidth := maxInt(8, rowWidth-utf8.RuneCountInString(prefix))
 	labelText := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
-	if m.twoLineResults() {
-		labelText = truncateRunes(labelText, contentWidth)
-		baseStyle := rowStyle
-		if selected {
-			baseStyle = selectedStyle
-		}
-		query := strings.TrimSpace(m.input.Value())
-		matchStyle := baseStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := baseStyle.Render(prefix) + renderFuzzyText(labelText, query, baseStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+labelText)
-		if padding > 0 {
-			rendered += baseStyle.Render(strings.Repeat(" ", padding))
-		}
-		return rendered
-	}
 
 	detailText := match.Detail
+	if m.options.ShowAddress {
+		detailText = entry.Address
+	}
 	if m.showInlinePreview() && selected && !entry.HasCmd() {
 		preview := m.cachedPreview(entry)
 		if selectedSnippet := m.inlinePreviewLine(preview, maxInt(12, width-4), m.activePreviewHit()); selectedSnippet != "" {
@@ -1006,22 +976,17 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	}
 	combined := compactResultLine(primary, secondary, contentWidth)
 	query := strings.TrimSpace(m.input.Value())
+	primaryStyle := rowStyle
 	if selected {
-		matchStyle := selectedStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := selectedStyle.Render(prefix) + renderFuzzyText(combined, query, selectedStyle, matchStyle)
-		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
-		if padding > 0 {
-			rendered += selectedStyle.Render(strings.Repeat(" ", padding))
-		}
-		return rendered
+		primaryStyle = selectedStyle
 	}
 
 	if secondary == "" || combined == primary {
-		matchStyle := rowStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		rendered := rowStyle.Render(prefix) + renderFuzzyText(combined, query, rowStyle, matchStyle)
+		matchStyle := primaryStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+		rendered := primaryStyle.Render(prefix) + renderFuzzyText(combined, query, primaryStyle, matchStyle)
 		padding := rowWidth - utf8.RuneCountInString(prefix+combined)
 		if padding > 0 {
-			rendered += rowStyle.Render(strings.Repeat(" ", padding))
+			rendered += primaryStyle.Render(strings.Repeat(" ", padding))
 		}
 		return rendered
 	}
@@ -1037,7 +1002,11 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 	if visible < rowWidth {
 		second += strings.Repeat(" ", rowWidth-visible)
 	}
-	return rowStyle.Render(prefix) + rowStyle.Render(first) + detailStyle.Render(second)
+	primaryMatchStyle := primaryStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+	detailMatchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+	return primaryStyle.Render(prefix) +
+		renderFuzzyText(first, query, primaryStyle, primaryMatchStyle) +
+		renderFuzzyText(second, query, detailStyle, detailMatchStyle)
 }
 
 func renderFuzzyText(text, query string, baseStyle, matchStyle lipgloss.Style) string {

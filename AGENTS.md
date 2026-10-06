@@ -30,7 +30,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
-- `show_address: true | false` is persisted in the same file; `f config address on|off` toggles a plain muted `user@host:port` row beneath each name.
+- `show_address: true | false` is persisted in the same file; `f config address on|off` toggles a muted inline `name · user@host:port` result.
 - `f config` and `f config show` print the current UI settings, exact config file, SSH inventory paths, and available setters. Every setter prints the persisted YAML key and config path; `f config height N` sets `picker_height` with a minimum of 6.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
