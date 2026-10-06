@@ -130,7 +130,7 @@ func TestReturningFromDetailsKeepsInputBackgroundTransparent(t *testing.T) {
 	m := NewPicker([]notes.Entry{{Desc: "gateway", Actions: []notes.Action{{Cmd: "ssh gateway"}}}}, "", DefaultTheme(), Options{Height: 8})
 	m.width, m.height = 100, 8
 	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	closed, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	closed, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
 	if view := closed.(PickerModel).View(); strings.Contains(view, "\x1b[48;2;32;32;39m") {
 		t.Fatalf("returning from details restored the dark input background: %q", view)
 	}
@@ -203,7 +203,7 @@ func TestTabOpensDetailedEntryView(t *testing.T) {
 	for _, want := range []string{
 		"DETAILS", "gateway", "operator@192.0.2.10:2222", "commands jumps",
 		"show remote routing table", "ssh -p 2222 -J operator@jump.example operator@192.0.2.10 show ip route table main",
-		"/home/operator/.ssh/config.d/f_hosts/f.conf:42", "Tab/Esc back", "Enter run",
+		"/home/operator/.ssh/config.d/f_hosts/f.conf:42", "Q/Tab back", "Enter run",
 	} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("detail view is missing %q: %q", want, plain)
@@ -211,7 +211,7 @@ func TestTabOpensDetailedEntryView(t *testing.T) {
 	}
 }
 
-func TestTabAndEscapeReturnFromDetailedEntryView(t *testing.T) {
+func TestTabAndQReturnFromDetailedEntryView(t *testing.T) {
 	entry := notes.Entry{Desc: "gateway", Address: "operator@192.0.2.10", Actions: []notes.Action{{Cmd: "ssh gateway"}}}
 	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 10})
 	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -220,10 +220,21 @@ func TestTabAndEscapeReturnFromDetailedEntryView(t *testing.T) {
 		t.Fatal("second Tab did not return to the list")
 	}
 	opened, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
-	closedByEscape, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEsc})
-	got := closedByEscape.(PickerModel)
+	closedByQ, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	got := closedByQ.(PickerModel)
 	if got.details || got.cancelled {
-		t.Fatal("Escape from details must return to the list without cancelling the picker")
+		t.Fatal("q from details must return to the list without cancelling the picker")
+	}
+}
+
+func TestEscapeDoesNotCloseDetailedEntryView(t *testing.T) {
+	entry := notes.Entry{Desc: "gateway", Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 10})
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, cmd := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := updated.(PickerModel)
+	if !got.details || got.cancelled || cmd != nil {
+		t.Fatalf("Escape changed details state: details=%v cancelled=%v cmd=%v", got.details, got.cancelled, cmd)
 	}
 }
 

@@ -120,7 +120,7 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.details {
 			m.detailOffset = minInt(maxInt(0, m.detailOffset), m.detailMaximumOffset())
 			switch msg.String() {
-			case "tab", "esc":
+			case "tab", "q":
 				m.details = false
 				m.detailOffset = 0
 				return m, nil
@@ -292,9 +292,9 @@ func (m PickerModel) detailsView(width int, rowStyle, detailStyle, statusStyle l
 	if maxOffset > 0 {
 		lines = append([]string(nil), lines[start:start+visibleBody]...)
 	}
-	footerText := "Tab/Esc back  •  Enter run  •  Ctrl+Y print"
+	footerText := "Q/Tab back  •  Enter run  •  Ctrl+Y print"
 	if maxOffset > 0 {
-		footerText = fmt.Sprintf("Tab/Esc back  •  Enter run  •  Ctrl+Y print  •  ↑/↓ %d/%d", start+1, maxOffset+1)
+		footerText = fmt.Sprintf("Q/Tab back  •  Enter run  •  Ctrl+Y print  •  ↑/↓ %d/%d", start+1, maxOffset+1)
 	}
 	footer := statusStyle.Render(truncateRunes(footerText, width))
 	lines = append(lines, footer)

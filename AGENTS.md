@@ -58,7 +58,7 @@ Ctrl+N       add custom host
 Esc/Ctrl+C   quit
 ```
 
-The `Tab` view shows the selected entry name, address, kind/mode, action description, complete multiline command, and source location. Long details scroll with `Up`/`Down` or `Ctrl+K`/`Ctrl+J`; `Tab` or `Esc` returns to the unchanged result list and `Enter` still runs the entry.
+The `Tab` view shows the selected entry name, address, kind/mode, action description, complete multiline command, and source location. Long details scroll with `Up`/`Down` or `Ctrl+K`/`Ctrl+J`; `q` or `Tab` returns to the unchanged result list, `Esc` has no details action, and `Enter` still runs the entry.
 
 `e` currently exits TUI and opens `$EDITOR`/`nano`. This was intentional: SSH config blocks are multiline and editor-based editing is safer than a hurried inline modal. A later Bubble Tea popup may reuse the same read/write logic.
 

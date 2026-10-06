@@ -96,7 +96,7 @@ Keys:
 
 - type to filter;
 - `↑` / `↓`, `Ctrl+K` / `Ctrl+J` to move through results in visual top-to-bottom order in every layout;
-- `Tab` to open or close details for the selected entry; `↑` / `↓` scroll long details and `Esc` returns to the list;
+- `Tab` to open details for the selected entry; `q` or `Tab` returns to the list, while `↑` / `↓` scroll long details;
 - `Enter` to run the selected SSH command;
 - `Ctrl+Y` / `Alt+Enter` to print without running;
 - `Ctrl+E` / `Alt+E` to edit the selected SSH config block;
