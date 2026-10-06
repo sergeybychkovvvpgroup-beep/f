@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -27,19 +29,27 @@ func hostsFileOverride() string {
 }
 
 type Host struct {
-	Name          string   `yaml:"name"`
-	Host          string   `yaml:"host"`
-	User          string   `yaml:"user,omitempty"`
-	Port          int      `yaml:"port,omitempty"`
-	Tags          []string `yaml:"tags,omitempty"`
-	Args          string   `yaml:"args,omitempty"`
-	Cmd           string   `yaml:"cmd,omitempty"`
-	Desc          string   `yaml:"desc,omitempty"`
-	Preview       string   `yaml:"preview,omitempty"`
-	Mode          string   `yaml:"-"`
-	ForwardRemote string   `yaml:"-"`
-	SourcePath    string   `yaml:"-"`
-	SourceLine    int      `yaml:"-"`
+	Name            string         `yaml:"name"`
+	Host            string         `yaml:"host"`
+	User            string         `yaml:"user,omitempty"`
+	Port            int            `yaml:"port,omitempty"`
+	Tags            []string       `yaml:"tags,omitempty"`
+	Args            string         `yaml:"args,omitempty"`
+	Cmd             string         `yaml:"cmd,omitempty"`
+	Desc            string         `yaml:"desc,omitempty"`
+	Preview         string         `yaml:"preview,omitempty"`
+	ExpandedCommand string         `yaml:"-"`
+	Mode            string         `yaml:"-"`
+	ForwardRemote   string         `yaml:"-"`
+	SSHSource       bool           `yaml:"-"`
+	SSHDirectives   []SSHDirective `yaml:"-"`
+	SourcePath      string         `yaml:"-"`
+	SourceLine      int            `yaml:"-"`
+}
+
+type SSHDirective struct {
+	Key   string
+	Value string
 }
 
 type File struct {
@@ -79,6 +89,9 @@ func Load() ([]Host, error) {
 			parsed, err := parse(raw)
 			if err != nil {
 				return nil, fmt.Errorf("parse %s: %w", path, err)
+			}
+			for i := range parsed {
+				parsed[i].SourcePath = path
 			}
 			out = append(out, parsed...)
 		} else if !errors.Is(err, os.ErrNotExist) {
@@ -218,11 +231,13 @@ func ToEntries(list []Host) []notes.Entry {
 		entries = append(entries, notes.Entry{
 			Desc:       label,
 			Address:    hostAddress(h),
+			Command:    displayCommand(h, cmd),
 			Kind:       kind,
 			KindSearch: kindSearch,
 			Mode:       mode,
 			SourcePath: h.SourcePath,
 			SourceLine: h.SourceLine,
+			Editable:   h.SSHSource && looksLikePlainSSH(cmd),
 			Note:       strings.Join(searchParts, " "),
 			Actions: []notes.Action{{
 				Desc:   detail,
@@ -232,6 +247,20 @@ func ToEntries(list []Host) []notes.Entry {
 		})
 	}
 	return entries
+}
+
+func displayCommand(h Host, fallback string) string {
+	command := strings.TrimSpace(h.ExpandedCommand)
+	if command == "" {
+		command = strings.TrimSpace(fallback)
+	}
+	lines := strings.Split(command, "\n")
+	for i, line := range lines {
+		line = strings.TrimSpace(line)
+		line = strings.TrimSpace(strings.TrimSuffix(line, "\\"))
+		lines[i] = line
+	}
+	return strings.TrimSpace(strings.Join(lines, " "))
 }
 
 func DisplayName(h Host) string {
@@ -448,55 +477,43 @@ func loadSSHConfig() []Host {
 	return loadSSHConfigFile(path, visited)
 }
 
+type sshConfigLine struct {
+	Path   string
+	Number int
+	Text   string
+}
+
 func loadSSHConfigFile(path string, visited map[string]bool) []Host {
-	path = expandPath(path)
-	abs, err := filepath.Abs(path)
-	if err == nil {
-		path = abs
-	}
-	if visited[path] {
-		return nil
-	}
-	visited[path] = true
-
-	file, err := os.Open(path)
-	if err != nil {
-		return nil
-	}
-	defer file.Close()
-
+	lines := expandSSHConfigLines(path, visited)
 	var out []Host
 	var current []string
 	attrs := map[string]string{}
+	var directives []SSHDirective
 	var pendingTags []string
+	currentPath := ""
 	currentLine := 0
 	flush := func() {
 		for _, alias := range current {
 			if alias == "" || strings.ContainsAny(alias, "*?") {
 				continue
 			}
-			h := Host{Name: alias, Host: attrs["hostname"], User: attrs["user"], Tags: append([]string{}, pendingTags...), SourcePath: path, SourceLine: currentLine}
+			h := Host{Name: alias, Host: attrs["hostname"], User: attrs["user"], Tags: append([]string{}, pendingTags...), SSHSource: true, SSHDirectives: append([]SSHDirective(nil), directives...), SourcePath: currentPath, SourceLine: currentLine}
 			if h.Host == "" {
 				h.Host = alias
 			}
 			if p, _ := strconv.Atoi(attrs["port"]); p > 0 {
 				h.Port = p
 			}
-			// Preserve the exact OpenSSH config semantics for execution by running
-			// the alias. Also keep a best-effort expanded command for preview, so
-			// RemoteCommand-based entries show the useful command on the right.
 			h.Cmd = "ssh " + shellQuote(alias)
 			h.Mode = classifySSHEntry(attrs)
 			h.ForwardRemote = forwardRemoteSummary(attrs)
-			h.Preview = expandedSSHCommand(alias, attrs)
+			h.ExpandedCommand = expandedSSHCommand(alias, attrs, directives)
+			h.Preview = h.ExpandedCommand
 			out = append(out, normalize(h))
 		}
 	}
-	s := bufio.NewScanner(file)
-	lineNumber := 0
-	for s.Scan() {
-		lineNumber++
-		raw := strings.TrimSpace(s.Text())
+	for _, source := range lines {
+		raw := strings.TrimSpace(source.Text)
 		if raw == "" {
 			continue
 		}
@@ -506,31 +523,211 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 			}
 			continue
 		}
-		line := strings.TrimSpace(strings.SplitN(raw, "#", 2)[0])
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		line := strings.TrimSpace(stripSSHComment(raw))
+		originalKey, value, ok := splitSSHConfigDirective(line)
+		if !ok {
 			continue
 		}
-		key := strings.ToLower(fields[0])
-		value := strings.Join(fields[1:], " ")
+		key := strings.ToLower(originalKey)
 		switch key {
-		case "include":
-			for _, pattern := range fields[1:] {
-				for _, include := range expandInclude(pattern, filepath.Dir(path)) {
-					out = append(out, loadSSHConfigFile(include, visited)...)
-				}
-			}
 		case "host":
 			flush()
-			current = fields[1:]
-			currentLine = lineNumber
+			current = strings.Fields(value)
+			currentPath = source.Path
+			currentLine = source.Number
 			attrs = map[string]string{}
+			directives = nil
+		case "match":
+			flush()
+			current = nil
+			currentPath = ""
+			currentLine = 0
+			attrs = map[string]string{}
+			directives = nil
 		default:
-			attrs[key] = value
+			if len(current) == 0 {
+				continue
+			}
+			directives = append(directives, SSHDirective{Key: originalKey, Value: value})
+			if isRepeatableSSHDirective(key) && attrs[key] != "" {
+				attrs[key] += "\n" + value
+			} else if attrs[key] == "" {
+				attrs[key] = value
+			}
 		}
 	}
 	flush()
 	return out
+}
+
+func expandSSHConfigLines(path string, visited map[string]bool) []sshConfigLine {
+	path = expandPath(path)
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	if visited[path] {
+		return nil
+	}
+	visited[path] = true
+	defer delete(visited, path)
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	var lines []sshConfigLine
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		text := scanner.Text()
+		line := strings.TrimSpace(stripSSHComment(text))
+		key, value, ok := splitSSHConfigDirective(line)
+		if ok && strings.EqualFold(key, "Include") {
+			for _, pattern := range splitSSHWords(value) {
+				for _, include := range expandInclude(pattern) {
+					lines = append(lines, expandSSHConfigLines(include, visited)...)
+				}
+			}
+			continue
+		}
+		lines = append(lines, sshConfigLine{Path: path, Number: lineNumber, Text: text})
+	}
+	return lines
+}
+
+func SSHSourceHasExecutableMatch(path string) (bool, error) {
+	return sshSourceHasExecutableMatch(path, map[string]bool{})
+}
+
+func sshSourceHasExecutableMatch(path string, visiting map[string]bool) (bool, error) {
+	path = expandPath(path)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return false, err
+	}
+	path = abs
+	if visiting[path] {
+		return false, nil
+	}
+	visiting[path] = true
+	defer delete(visiting, path)
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	reader := bufio.NewReader(file)
+	for {
+		text, readErr := reader.ReadString('\n')
+		line := strings.TrimSpace(stripSSHComment(text))
+		key, value, ok := splitSSHConfigDirective(line)
+		if ok && strings.EqualFold(key, "Match") {
+			for _, token := range splitSSHWords(value) {
+				criterion := strings.ToLower(strings.TrimLeft(token, "!"))
+				if criterion == "exec" || strings.HasPrefix(criterion, "exec=") {
+					return true, nil
+				}
+			}
+		}
+		if ok && strings.EqualFold(key, "Include") {
+			for _, pattern := range splitSSHWords(value) {
+				for _, include := range expandInclude(pattern) {
+					found, includeErr := sshSourceHasExecutableMatch(include, visiting)
+					if includeErr != nil {
+						return false, includeErr
+					}
+					if found {
+						return true, nil
+					}
+				}
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return false, nil
+			}
+			return false, readErr
+		}
+	}
+}
+
+func SSHSourceDefinesAlias(path, alias string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	wanted := strings.TrimSpace(alias)
+	reader := bufio.NewReader(file)
+	for {
+		text, readErr := reader.ReadString('\n')
+		line := strings.TrimSpace(stripSSHComment(text))
+		key, value, ok := splitSSHConfigDirective(line)
+		if ok && strings.EqualFold(key, "Host") {
+			for _, candidate := range strings.Fields(value) {
+				if candidate == wanted {
+					return true
+				}
+			}
+		}
+		if readErr != nil {
+			return false
+		}
+	}
+}
+
+func stripSSHComment(line string) string {
+	var quote rune
+	escaped := false
+	for i, r := range line {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if r == '#' {
+			return line[:i]
+		}
+	}
+	return line
+}
+
+func splitSSHConfigDirective(line string) (key, value string, ok bool) {
+	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", "", false
+	}
+	end := 0
+	for end < len(line) && line[end] != '=' && line[end] != ' ' && line[end] != '	' {
+		end++
+	}
+	if end == 0 || end == len(line) {
+		return "", "", false
+	}
+	key = line[:end]
+	rest := strings.TrimLeft(line[end:], " 	")
+	if strings.HasPrefix(rest, "=") {
+		rest = strings.TrimLeft(rest[1:], " 	")
+	}
+	value = strings.TrimSpace(rest)
+	if value == "" {
+		return "", "", false
+	}
+	return key, value, true
 }
 
 func classifyHostSyntax(h Host) string {
@@ -622,39 +819,22 @@ func hasAnySSHAttr(attrs map[string]string, keys ...string) bool {
 	return false
 }
 
-func expandedSSHCommand(alias string, attrs map[string]string) string {
+func expandedSSHCommand(alias string, attrs map[string]string, directives []SSHDirective) string {
 	if len(attrs) == 0 {
 		return ""
 	}
 	parts := []string{"ssh"}
-	if value := strings.TrimSpace(attrs["port"]); value != "" && value != "22" {
-		parts = append(parts, "-p", value)
-	}
-	if value := strings.TrimSpace(attrs["proxyjump"]); value != "" {
-		parts = append(parts, "-J", value)
-	}
-	if value := strings.TrimSpace(attrs["identityfile"]); value != "" {
-		parts = append(parts, "-i", value)
-	}
-	if value := strings.TrimSpace(attrs["localforward"]); value != "" {
-		parts = append(parts, "-L", value)
-	}
-	if value := strings.TrimSpace(attrs["remoteforward"]); value != "" {
-		parts = append(parts, "-R", value)
-	}
-	if value := strings.TrimSpace(attrs["dynamicforward"]); value != "" {
-		parts = append(parts, "-D", value)
-	}
-	for _, opt := range []string{
-		"hostkeyalgorithms",
-		"pubkeyacceptedalgorithms",
-		"stricthostkeychecking",
-		"userknownhostsfile",
-		"requesttty",
-		"forwardagent",
-	} {
-		if value := strings.TrimSpace(attrs[opt]); value != "" {
-			parts = append(parts, "-o", canonicalSSHOption(opt)+"="+value)
+	for _, directive := range directives {
+		key := strings.TrimSpace(directive.Key)
+		value := strings.TrimSpace(directive.Value)
+		if key == "" || value == "" {
+			continue
+		}
+		switch strings.ToLower(key) {
+		case "hostname", "user":
+			continue
+		default:
+			parts = append(parts, "-o", key+"="+value)
 		}
 	}
 
@@ -666,10 +846,16 @@ func expandedSSHCommand(alias string, attrs map[string]string) string {
 		target = user + "@" + target
 	}
 	parts = append(parts, target)
-	if remote := strings.TrimSpace(attrs["remotecommand"]); remote != "" && strings.ToLower(remote) != "none" {
-		parts = append(parts, remote)
-	}
 	return multilineShellCommand(parts)
+}
+
+func isRepeatableSSHDirective(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "identityfile", "localforward", "remoteforward", "dynamicforward":
+		return true
+	default:
+		return false
+	}
 }
 
 func multilineShellCommand(parts []string) string {
@@ -704,25 +890,6 @@ func multilineShellCommand(parts []string) string {
 	return strings.Join(lines, "\n")
 }
 
-func canonicalSSHOption(key string) string {
-	switch strings.ToLower(key) {
-	case "hostkeyalgorithms":
-		return "HostKeyAlgorithms"
-	case "pubkeyacceptedalgorithms":
-		return "PubkeyAcceptedAlgorithms"
-	case "stricthostkeychecking":
-		return "StrictHostKeyChecking"
-	case "userknownhostsfile":
-		return "UserKnownHostsFile"
-	case "requesttty":
-		return "RequestTTY"
-	case "forwardagent":
-		return "ForwardAgent"
-	default:
-		return key
-	}
-}
-
 func parseSSHTags(line string) []string {
 	line = strings.TrimSpace(strings.TrimPrefix(line, "#"))
 	lower := strings.ToLower(line)
@@ -740,10 +907,60 @@ func parseSSHTags(line string) []string {
 	return tags
 }
 
-func expandInclude(pattern, baseDir string) []string {
+func splitSSHWords(value string) []string {
+	var words []string
+	var current strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if current.Len() > 0 {
+			words = append(words, current.String())
+			current.Reset()
+		}
+	}
+	for _, r := range value {
+		if escaped {
+			current.WriteRune(r)
+			escaped = false
+			continue
+		}
+		if r == '\\' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if r == quote {
+				quote = 0
+			} else {
+				current.WriteRune(r)
+			}
+			continue
+		}
+		if r == '\'' || r == '"' {
+			quote = r
+			continue
+		}
+		if r == ' ' || r == '	' {
+			flush()
+			continue
+		}
+		current.WriteRune(r)
+	}
+	if escaped {
+		current.WriteRune('\\')
+	}
+	flush()
+	return words
+}
+
+func expandInclude(pattern string) []string {
 	pattern = expandPath(pattern)
 	if !filepath.IsAbs(pattern) {
-		pattern = filepath.Join(baseDir, pattern)
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil
+		}
+		pattern = filepath.Join(home, ".ssh", pattern)
 	}
 	matches, err := filepath.Glob(pattern)
 	if err != nil || len(matches) == 0 {
@@ -754,9 +971,24 @@ func expandInclude(pattern, baseDir string) []string {
 }
 
 func expandPath(path string) string {
-	if strings.HasPrefix(path, "~/") {
+	if path == "~" || strings.HasPrefix(path, "~/") {
 		if home, err := os.UserHomeDir(); err == nil {
+			if path == "~" {
+				return home
+			}
 			return filepath.Join(home, strings.TrimPrefix(path, "~/"))
+		}
+	}
+	if strings.HasPrefix(path, "~") {
+		nameAndRest := strings.TrimPrefix(path, "~")
+		name, rest, found := strings.Cut(nameAndRest, "/")
+		if name != "" {
+			if account, err := user.Lookup(name); err == nil {
+				if !found || rest == "" {
+					return account.HomeDir
+				}
+				return filepath.Join(account.HomeDir, rest)
+			}
 		}
 	}
 	return path

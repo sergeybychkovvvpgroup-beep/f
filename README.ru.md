@@ -11,7 +11,7 @@
 - небольшой цветной badge активной категории и счётчик;
 - строка запроса без заливки фона и инверсного блочного курсора, чтобы на прозрачном фоне терминала не появлялось чёрное пятно;
 - счётчик совпадений;
-- одноcтрочный список с опциональным приглушённым адресом через интерпункт: `name · user@host:port`;
+- одноcтрочный список с вычисленной командой через интерпункт: `name · ssh user@host`; все директивы выбранного конкретного блока `Host` отображаются в безопасной для OpenSSH форме `-o Key=Value`, а `HostName` и `User` образуют target;
 - цветное выделение совпавших символов;
 - тонкий цветной маркер выбранной строки;
 - подробный просмотр по `Tab` с полной командой, адресом, режимом, описанием и исходным файлом;
@@ -31,11 +31,11 @@ f config layout bottom   # внизу экрана
 f config layout top      # вверху экрана
 ```
 
-Показывать приглушённый адрес в одной строке после имени:
+Показывать вычисленную команду в одной строке после имени (старое имя настройки `address` сохранено для совместимости):
 
 ```bash
 f config address on
-f config address off     # скрыть адреса
+f config address off     # скрыть команды
 ```
 
 Старые значения конфигурации мигрируют автоматически: `light` → `compact`, `full` → `full-screen`.
@@ -48,9 +48,9 @@ f config address off     # скрыть адреса
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
-### Compact, top с адресами в строке
+### Compact, top с командами в строке
 
-![Compact picker с приглушёнными SSH-адресами](docs/screenshots/compact-top-address.png)
+![Compact picker с вычисленными SSH-командами](docs/screenshots/compact-top-address.png)
 
 ### Full-screen
 
@@ -98,7 +98,7 @@ f config ui full-screen # полноэкранный UI
 f config layout bottom  # compact снизу
 f config layout top     # compact сверху
 f config height 20      # высота compact picker, минимум 6
-f config address on     # name · user@host:port
+f config address on     # name · ssh user@host
 f setup                 # запросить repo и проверить доступ
 ```
 
@@ -111,7 +111,7 @@ f setup                 # запросить repo и проверить дост
 - `Tab` — открыть подробности выбранной записи; `q` или `Tab` возвращают к списку, `↑` / `↓` прокручивают длинные подробности;
 - `Enter` — запустить выбранный SSH;
 - `Ctrl+Y` / `Alt+Enter` — вывести команду без запуска;
-- `Ctrl+E` / `Alt+E` — редактировать SSH config block;
+- `Ctrl+E` / `Alt+E` — открыть полный исходный SSH config в `$EDITOR` сразу на строке выбранной записи;
 - `Ctrl+N` — добавить хост;
 - `Esc` / `Ctrl+C` — выйти.
 
@@ -145,7 +145,7 @@ ssh alias-name
 
 ## Редактирование и синхронизация
 
-`Ctrl+E` выходит из TUI и открывает `$EDITOR`, fallback — `nano`. Сохранённый block upsert-ится в `~/.ssh/config.d/f_hosts/f.conf` между маркерами `# f-edit begin/end`.
+`Ctrl+E` выходит из TUI и открывает полный исходный SSH config в `$EDITOR`, fallback — `nano`, сразу на строке выбранной записи. Для общего inventory это `~/.ssh/config.d/f_hosts/f.conf`; временный файл с одним сгенерированным блоком больше не используется. После выхода из редактора `f` проверяет файл через `ssh -G`; при синтаксической ошибке исходное содержимое автоматически восстанавливается.
 
 Если `~/.ssh/config.d/f_hosts` является git-репозиторием, `f` делает pull при запуске и commit/push после редактирования или `f add`.
 

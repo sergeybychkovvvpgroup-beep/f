@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line results with an optional muted address after an interpunct: `name · user@host:port`;
+- single-line results with the composed command after an interpunct: `name · ssh user@host`; every directive from the selected concrete `Host` block is represented in OpenSSH-safe form as `-o Key=Value`, while `HostName` and `User` form the target;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - `Tab` detail view with the complete command, address, mode, description, and source location;
@@ -31,11 +31,11 @@ f config layout bottom
 f config layout top
 ```
 
-Show a muted address inline after each entry name:
+Show the composed command inline after each entry name (the legacy `address` setting name remains for compatibility):
 
 ```bash
 f config address on
-f config address off     # hide inline addresses
+f config address off     # hide inline commands
 ```
 
 Legacy config values migrate automatically: `light` → `compact`, `full` → `full-screen`.
@@ -48,9 +48,9 @@ Legacy config values migrate automatically: `light` → `compact`, `full` → `f
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
-### Compact, top with inline addresses
+### Compact, top with inline commands
 
-![Compact picker with muted SSH addresses](docs/screenshots/compact-top-address.png)
+![Compact picker with composed SSH commands](docs/screenshots/compact-top-address.png)
 
 ### Full-screen
 
@@ -89,7 +89,7 @@ f config ui full-screen # full-screen UI
 f config layout bottom  # compact at bottom
 f config layout top     # compact at top
 f config height 20      # compact picker height (minimum 6)
-f config address on     # name · user@host:port
+f config address on     # name · ssh user@host
 f setup                 # interactive repository setup and access check
 ```
 
@@ -102,7 +102,7 @@ Keys:
 - `Tab` to open details for the selected entry; `q` or `Tab` returns to the list, while `↑` / `↓` scroll long details;
 - `Enter` to run the selected SSH command;
 - `Ctrl+Y` / `Alt+Enter` to print without running;
-- `Ctrl+E` / `Alt+E` to edit the selected SSH config block;
+- `Ctrl+E` / `Alt+E` to open the complete source SSH config in `$EDITOR` at the selected entry;
 - `Ctrl+N` to add a host;
 - `Esc` / `Ctrl+C` to quit.
 
@@ -136,7 +136,7 @@ This preserves OpenSSH behavior for `ProxyJump`, forwards, `RemoteCommand`, iden
 
 ## Editing and sync
 
-`Ctrl+E` exits the TUI and opens `$EDITOR` (`nano` fallback). The saved block is upserted into `~/.ssh/config.d/f_hosts/f.conf` between `# f-edit begin/end` markers.
+`Ctrl+E` exits the TUI and opens the complete source SSH config in `$EDITOR` (`nano` fallback) at the selected entry's line. For the shared inventory this is `~/.ssh/config.d/f_hosts/f.conf`; the old temporary one-block editor is no longer used. After the editor exits, `f` validates the file with `ssh -G` and restores the original content if validation fails.
 
 When `~/.ssh/config.d/f_hosts` is a Git repository, `f` pulls on startup and commits/pushes after edits or `f add`.
 

@@ -100,6 +100,7 @@ func (r *RunCommands) UnmarshalYAML(node *yaml.Node) error {
 type Entry struct {
 	Desc         string          `yaml:"desc"`
 	Address      string          `yaml:"-"`
+	Command      string          `yaml:"-"`
 	Kind         string          `yaml:"-"`
 	KindSearch   string          `yaml:"-"`
 	ActionCmd    string          `yaml:"action"`
@@ -114,6 +115,7 @@ type Entry struct {
 	SourceFile   string          `yaml:"-"`
 	SourceLine   int             `yaml:"-"`
 	SourceKind   string          `yaml:"-"`
+	Editable     bool            `yaml:"-"`
 	Lite         bool            `yaml:"-"`
 	GroupEntries []Entry         `yaml:"-"`
 	GroupSummary string          `yaml:"-"`

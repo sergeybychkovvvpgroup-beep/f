@@ -151,6 +151,9 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				entry := m.matches[m.cursor].Entry
+				if !entry.Editable {
+					return m, nil
+				}
 				m.selected = &entry
 				m.selectedLine = entry.PreviewHitLine(m.preview, m.activePreviewHit())
 				m.edit = true
@@ -206,6 +209,9 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			entry := m.matches[m.cursor].Entry
+			if !entry.Editable {
+				return m, nil
+			}
 			m.selected = &entry
 			m.selectedLine = entry.PreviewHitLine(m.preview, m.activePreviewHit())
 			m.edit = true
@@ -688,7 +694,7 @@ func (m PickerModel) statusLine() string {
 }
 
 func (m PickerModel) renderStatusBar(baseStyle lipgloss.Style) string {
-	return baseStyle.Render("F1–F5 categories  •  Tab details")
+	return baseStyle.Render("Ctrl+E edit  •  Tab details  •  F1–F5 categories")
 }
 
 func (m PickerModel) renderSyncStatus() string {
@@ -956,7 +962,10 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 
 	detailText := match.Detail
 	if m.options.ShowAddress {
-		detailText = entry.Address
+		detailText = entry.Command
+		if strings.TrimSpace(detailText) == "" {
+			detailText = entry.Address
+		}
 	}
 	if m.showInlinePreview() && selected && !entry.HasCmd() {
 		preview := m.cachedPreview(entry)
@@ -1072,21 +1081,11 @@ func compactResultLine(primary, secondary string, width int) string {
 		return truncateRunes(primary, width)
 	}
 
-	maxSecondaryWidth := width / 2
-	if maxSecondaryWidth < 16 {
-		maxSecondaryWidth = 16
-	}
-	if maxSecondaryWidth > 48 {
-		maxSecondaryWidth = 48
-	}
-
 	availableSecondaryWidth := width - minPrimaryWidth - gap
 	if availableSecondaryWidth < 0 {
 		availableSecondaryWidth = 0
 	}
-	if maxSecondaryWidth > availableSecondaryWidth {
-		maxSecondaryWidth = availableSecondaryWidth
-	}
+	maxSecondaryWidth := availableSecondaryWidth
 
 	secondary = truncateRunes(secondary, maxSecondaryWidth)
 	secondaryWidth := utf8.RuneCountInString(secondary)
@@ -1114,21 +1113,11 @@ func compactResultSplit(primary, secondary string, width int) int {
 		return utf8.RuneCountInString(truncateRunes(primary, width))
 	}
 
-	maxSecondaryWidth := width / 2
-	if maxSecondaryWidth < 16 {
-		maxSecondaryWidth = 16
-	}
-	if maxSecondaryWidth > 48 {
-		maxSecondaryWidth = 48
-	}
-
 	availableSecondaryWidth := width - minPrimaryWidth - gap
 	if availableSecondaryWidth < 0 {
 		availableSecondaryWidth = 0
 	}
-	if maxSecondaryWidth > availableSecondaryWidth {
-		maxSecondaryWidth = availableSecondaryWidth
-	}
+	maxSecondaryWidth := availableSecondaryWidth
 
 	secondary = truncateRunes(secondary, maxSecondaryWidth)
 	secondaryWidth := utf8.RuneCountInString(secondary)

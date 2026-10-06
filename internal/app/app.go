@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -21,7 +22,7 @@ import (
 )
 
 var (
-	version     = "0.9.5"
+	version     = "0.9.6"
 	buildCommit = "unknown"
 )
 
@@ -134,51 +135,100 @@ func editSSHConfigEntry(entry notes.Entry, stdout, stderr io.Writer) error {
 	if !ok {
 		return fmt.Errorf("cannot edit non-ssh-alias command: %s", action.Cmd)
 	}
-	block, err := editableSSHBlock(alias)
+	path := strings.TrimSpace(entry.SourcePath)
+	if path == "" {
+		return errors.New("selected entry is not backed by an editable SSH config source")
+	}
+	original, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read SSH source %s: %w", path, err)
+	}
+	info, err := os.Stat(path)
 	if err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp("", "f-ssh-edit-*.conf")
-	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	if _, err := tmp.WriteString(block); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	defer os.Remove(tmpPath)
 
 	editor := strings.TrimSpace(os.Getenv("EDITOR"))
 	if editor == "" {
 		editor = "nano"
 	}
-	cmd := exec.Command("/bin/sh", "-lc", shellQuoteArg(editor)+" "+shellQuoteArg(tmpPath))
+	cmd := exec.Command("/bin/sh", "-lc", editorOpenCommand(editor, path, entry.SourceLine))
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
-		return err
+	editorErr := cmd.Run()
+	edited, readErr := os.ReadFile(path)
+	if readErr != nil {
+		if restoreErr := os.WriteFile(path, original, info.Mode().Perm()); restoreErr != nil {
+			return fmt.Errorf("editor left SSH config unreadable: %v; rollback failed: %w", readErr, restoreErr)
+		}
+		return fmt.Errorf("editor left SSH config unreadable; restored %s: %w", path, readErr)
 	}
-	edited, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return err
+	if editorErr != nil {
+		if !bytes.Equal(original, edited) {
+			if restoreErr := os.WriteFile(path, original, info.Mode().Perm()); restoreErr != nil {
+				return fmt.Errorf("editor failed: %v; rollback failed: %w", editorErr, restoreErr)
+			}
+			return fmt.Errorf("editor failed; restored %s: %w", path, editorErr)
+		}
+		return editorErr
 	}
-	if strings.TrimSpace(string(edited)) == "" {
-		return errors.New("edited SSH block is empty; aborting")
+	if bytes.Equal(original, edited) {
+		fmt.Fprintf(stdout, "SSH config unchanged: %s\n", path)
+		return nil
 	}
-	path, err := userSSHConfigPath()
-	if err != nil {
-		return err
-	}
-	if err := upsertMarkedBlock(path, alias, strings.TrimRight(string(edited), "\n")+"\n"); err != nil {
-		return err
+	if err := validateSSHSource(path, alias); err != nil {
+		if restoreErr := os.WriteFile(path, original, info.Mode().Perm()); restoreErr != nil {
+			return fmt.Errorf("invalid SSH config: %v; rollback failed: %w", err, restoreErr)
+		}
+		return fmt.Errorf("invalid SSH config; restored %s: %w", path, err)
 	}
 	pushHostsConfig(stderr)
-	fmt.Fprintf(stdout, "saved SSH override: %s\nfile: %s\n", alias, path)
+	fmt.Fprintf(stdout, "saved SSH config: %s\nfile: %s\n", alias, path)
+	return nil
+}
+
+func editorOpenCommand(editor, path string, line int) string {
+	first := strings.Fields(editor)
+	name := ""
+	if len(first) > 0 {
+		name = filepath.Base(first[0])
+	}
+	if line < 1 {
+		line = 1
+	}
+	if name == "code" || name == "codium" {
+		return editor + " -g " + shellQuoteArg(fmt.Sprintf("%s:%d", path, line))
+	}
+	return editor + " +" + strconv.Itoa(line) + " " + shellQuoteArg(path)
+}
+
+func sshSourceDefinesAlias(path, alias string) bool {
+	return hosts.SSHSourceDefinesAlias(path, alias)
+}
+
+func validateSSHSource(path, alias string) error {
+	if !sshSourceDefinesAlias(path, alias) {
+		return fmt.Errorf("SSH source no longer defines Host %s", alias)
+	}
+	hasExecutableMatch, inspectErr := hosts.SSHSourceHasExecutableMatch(path)
+	if inspectErr != nil {
+		return fmt.Errorf("cannot safely inspect SSH config: %w", inspectErr)
+	}
+	if hasExecutableMatch {
+		return errors.New("SSH config contains Match exec; refusing executable validation")
+	}
+	cmd := exec.Command("ssh", "-G", "-F", path, alias)
+	cmd.Stdout = io.Discard
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := strings.TrimSpace(stderr.String())
+		if message != "" {
+			return errors.New(message)
+		}
+		return err
+	}
 	return nil
 }
 
@@ -211,79 +261,6 @@ func sshAliasFromCommand(command string) (string, bool) {
 		return "", false
 	}
 	return alias, true
-}
-
-func editableSSHBlock(alias string) (string, error) {
-	attrs := sshG(alias)
-	lines := []string{
-		"# Edit this block. It will be saved to ~/.ssh/config.d/f_hosts/f.conf",
-		"# f uses its dedicated OpenSSH config.d subdirectory; no hidden store.",
-		"Host " + alias,
-	}
-	add := func(key, value string) {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			lines = append(lines, "  "+key+" "+value)
-		}
-	}
-	add("HostName", attrs["hostname"])
-	add("User", attrs["user"])
-	if port := strings.TrimSpace(attrs["port"]); port != "" && port != "22" {
-		add("Port", port)
-	}
-	add("ProxyJump", attrs["proxyjump"])
-	add("ProxyCommand", attrs["proxycommand"])
-	for _, value := range attrsList(attrs, "localforward") {
-		add("LocalForward", value)
-	}
-	for _, value := range attrsList(attrs, "remoteforward") {
-		add("RemoteForward", value)
-	}
-	for _, value := range attrsList(attrs, "dynamicforward") {
-		add("DynamicForward", value)
-	}
-	add("RemoteCommand", attrs["remotecommand"])
-	if value := strings.TrimSpace(attrs["requesttty"]); value != "" && value != "auto" {
-		add("RequestTTY", value)
-	}
-	if len(lines) == 3 {
-		lines = append(lines, "  HostName ")
-	}
-	return strings.Join(lines, "\n") + "\n", nil
-}
-
-func sshG(alias string) map[string]string {
-	cmd := exec.Command("ssh", "-G", alias)
-	out, err := cmd.Output()
-	if err != nil {
-		return map[string]string{}
-	}
-	attrs := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), " ")
-		if !ok {
-			continue
-		}
-		key = strings.ToLower(strings.TrimSpace(key))
-		value = strings.TrimSpace(value)
-		if key == "" || value == "" {
-			continue
-		}
-		if prev := attrs[key]; prev != "" {
-			attrs[key] = prev + "\n" + value
-		} else {
-			attrs[key] = value
-		}
-	}
-	return attrs
-}
-
-func attrsList(attrs map[string]string, key string) []string {
-	value := strings.TrimSpace(attrs[key])
-	if value == "" {
-		return nil
-	}
-	return strings.Split(value, "\n")
 }
 
 func userSSHConfigPath() (string, error) {

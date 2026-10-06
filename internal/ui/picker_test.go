@@ -25,24 +25,60 @@ func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	}
 }
 
-func TestPickerShowsMutedAddressInlineAfterInterpunctWhenEnabled(t *testing.T) {
+func TestPickerShowsFullCommandInlineAfterInterpunctWhenEnabled(t *testing.T) {
 	entry := notes.Entry{
 		Desc:    "gateway",
 		Address: "operator@192.0.2.10:2222",
+		Command: "ssh -p 2222 operator@192.0.2.10",
 		Kind:    "host",
 		Actions: []notes.Action{{Cmd: "ssh gateway"}},
 	}
 	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
 	m.width, m.height = 100, 8
 	if got := m.resultRowHeight(); got != 1 {
-		t.Fatalf("address mode row height = %d, want 1", got)
+		t.Fatalf("command mode row height = %d, want 1", got)
 	}
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "│ gateway · operator@192.0.2.10:2222") {
-		t.Fatalf("address is not rendered inline after an interpunct: %q", plain)
+	if !strings.Contains(plain, "│ gateway · ssh -p 2222 operator@192.0.2.10") {
+		t.Fatalf("full command is not rendered inline after an interpunct: %q", plain)
 	}
-	if strings.Contains(plain, "\n    operator@192.0.2.10:2222") {
-		t.Fatalf("address is still rendered on a second line: %q", plain)
+	if strings.Contains(plain, "gateway · operator@192.0.2.10:2222") {
+		t.Fatalf("row still renders the bare address instead of the command: %q", plain)
+	}
+}
+
+func TestCompactStatusAdvertisesEditHotkey(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "gateway", Editable: true, Actions: []notes.Action{{Cmd: "ssh gateway"}}}}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "Ctrl+E edit") {
+		t.Fatalf("compact picker does not advertise Ctrl+E: %q", plain)
+	}
+}
+
+func TestNarrowStatusKeepsEditHotkeyVisible(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "gateway", Editable: true, Actions: []notes.Action{{Cmd: "ssh gateway"}}}}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 40, 8
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "Ctrl+E edit") {
+		t.Fatalf("narrow picker hid Ctrl+E: %q", plain)
+	}
+}
+
+func TestEditHotkeyDoesNotExitForNonEditableEntry(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "command", Actions: []notes.Action{{Cmd: "docker ps"}}}}, "", DefaultTheme(), Options{Height: 8})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	got := updated.(PickerModel)
+	if cmd != nil || got.EditRequested() || got.Selected() != nil {
+		t.Fatal("Ctrl+E must be ignored for entries without an SSH config source")
+	}
+}
+
+func TestWideResultUsesAvailableSpaceForFullCommand(t *testing.T) {
+	command := "ssh -p 2222 -J jump.example -i ~/.ssh/id_ed25519 operator@192.0.2.10 show route table main"
+	got := compactResultLine("gateway", command, 140)
+	if !strings.Contains(got, command) || strings.Contains(got, "…") {
+		t.Fatalf("wide result truncated the full command: %q", got)
 	}
 }
 

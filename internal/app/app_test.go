@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -51,8 +52,8 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "f 0.9.5" {
-		t.Fatalf("version = %q, want %q", got, "f 0.9.5")
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.9.6" {
+		t.Fatalf("version = %q, want %q", got, "f 0.9.6")
 	}
 }
 
@@ -200,16 +201,208 @@ func TestUsageUsesFBrand(t *testing.T) {
 	}
 }
 
-func TestEditableSSHBlockUsesFBrand(t *testing.T) {
-	block, err := editableSSHBlock("test-alias")
+func TestEditSSHConfigEntryOpensCompleteSourceFileAtSelectedLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".ssh", "config.d", "f_hosts")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "f.conf")
+	original := "Host first\n  HostName 192.0.2.1\n\nHost gateway\n  HostName 192.0.2.10\n  User operator\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	logPath := filepath.Join(home, "editor-args")
+	editor := filepath.Join(home, "fake-editor")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuoteArg(logPath) + "\nfor last do :; done\nprintf '\\n# touched by editor\\n' >> \"$last\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{
+		Desc:       "gateway",
+		SourcePath: path,
+		SourceLine: 4,
+		Actions:    []notes.Action{{Cmd: "ssh gateway"}},
+	}
+	var stdout, stderr bytes.Buffer
+	if err := editSSHConfigEntry(entry, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	args, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(block, "f uses its dedicated OpenSSH") {
-		t.Fatalf("editable block does not use f branding:\n%s", block)
+	if !strings.Contains(string(args), path) || !strings.Contains(string(args), "+4") {
+		t.Fatalf("editor args = %q, want complete source path and selected line", args)
 	}
-	if strings.Contains(block, "# aoo uses") {
-		t.Fatalf("editable block still advertises old product name:\n%s", block)
+	edited, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(edited)
+	if !strings.Contains(text, "Host first") || !strings.Contains(text, "# touched by editor") {
+		t.Fatalf("editor did not receive the complete inventory: %q", text)
+	}
+	if strings.Contains(text, "# f-edit begin") {
+		t.Fatalf("editing created a generated override instead of changing the source file: %q", text)
+	}
+}
+
+func TestValidateSSHSourceRejectsMatchExecWithoutRunningIt(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	marker := filepath.Join(dir, "executed")
+	content := "Host gateway\n  HostName 192.0.2.10\nMatch exec \"touch " + marker + "\"\n  ForwardAgent yes\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := validateSSHSource(path, "gateway")
+	if err == nil || !strings.Contains(err.Error(), "Match exec") {
+		t.Fatalf("validation error = %v, want Match exec refusal", err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("Match exec command ran during validation: %v", statErr)
+	}
+}
+
+func TestValidateSSHSourceRejectsMatchExecAfterVeryLongLine(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config")
+	marker := filepath.Join(dir, "executed")
+	content := strings.Repeat("#", 70000) + "\nHost gateway\n  HostName 192.0.2.10\nMatch exec \"touch " + marker + "\"\n  ForwardAgent yes\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := validateSSHSource(path, "gateway")
+	if err == nil || !strings.Contains(err.Error(), "Match exec") {
+		t.Fatalf("validation error = %v, want Match exec refusal", err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("Match exec command ran after long line: %v", statErr)
+	}
+}
+
+func TestValidateSSHSourceRejectsMatchExecFromNamedUserInclude(t *testing.T) {
+	account, err := user.Current()
+	if err != nil || account.Username == "" || account.HomeDir == "" {
+		t.Skip("current user lookup unavailable")
+	}
+	dir, err := os.MkdirTemp(account.HomeDir, ".f-match-exec-test-")
+	if err != nil {
+		t.Skipf("cannot create test directory in user home: %v", err)
+	}
+	defer os.RemoveAll(dir)
+	marker := filepath.Join(dir, "executed")
+	included := filepath.Join(dir, "included.conf")
+	if err := os.WriteFile(included, []byte("Match exec \"touch "+marker+"\"\n  ForwardAgent yes\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config")
+	relativeInclude, err := filepath.Rel(account.HomeDir, included)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := "Host gateway\n  HostName 192.0.2.10\nInclude ~" + account.Username + "/" + filepath.ToSlash(relativeInclude) + "\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err = validateSSHSource(path, "gateway")
+	if err == nil || !strings.Contains(err.Error(), "Match exec") {
+		t.Fatalf("validation error = %v, want Match exec refusal", err)
+	}
+	if _, statErr := os.Stat(marker); !os.IsNotExist(statErr) {
+		t.Fatalf("Match exec in ~user include ran during validation: %v", statErr)
+	}
+}
+
+func TestEditSSHConfigEntryRestoresSourceAfterInvalidEdit(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".ssh", "config.d", "f_hosts")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "f.conf")
+	original := "Host gateway\n  HostName 192.0.2.10\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(home, "bad-editor")
+	script := "#!/bin/sh\nfor last do :; done\nprintf '\\nDefinitelyNotAnSSHOption yes\\n' >> \"$last\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{SourcePath: path, SourceLine: 1, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	var stdout, stderr bytes.Buffer
+	err := editSSHConfigEntry(entry, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "restored") {
+		t.Fatalf("invalid edit error = %v, want rollback report", err)
+	}
+	restored, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(restored) != original {
+		t.Fatalf("invalid edit was not rolled back:\n%s", restored)
+	}
+}
+
+func TestEditSSHConfigEntryRestoresChangedFileWhenEditorFails(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "f.conf")
+	original := "Host gateway\n  HostName 192.0.2.10\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(home, "failing-editor")
+	script := "#!/bin/sh\nfor last do :; done\nprintf '\\nDefinitelyNotAnSSHOption yes\\n' >> \"$last\"\nexit 7\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{SourcePath: path, SourceLine: 1, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	var stdout, stderr bytes.Buffer
+	err := editSSHConfigEntry(entry, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "restored") {
+		t.Fatalf("editor failure = %v, want rollback report", err)
+	}
+	restored, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(restored) != original {
+		t.Fatalf("failed editor was not rolled back:\n%s", restored)
+	}
+}
+
+func TestEditSSHConfigEntryRestoresDeletedSource(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "f.conf")
+	original := "Host gateway\n  HostName 192.0.2.10\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(home, "deleting-editor")
+	script := "#!/bin/sh\nfor last do :; done\nrm -f \"$last\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{SourcePath: path, SourceLine: 1, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	var stdout, stderr bytes.Buffer
+	err := editSSHConfigEntry(entry, &stdout, &stderr)
+	if err == nil || !strings.Contains(err.Error(), "restored") {
+		t.Fatalf("deleted source error = %v, want rollback report", err)
+	}
+	restored, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(restored) != original {
+		t.Fatalf("deleted source was not restored:\n%s", restored)
 	}
 }
 

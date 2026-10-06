@@ -247,6 +247,7 @@ func commandEntries(entries []Entry) []Entry {
 			out = append(out, Entry{
 				Desc:       entry.DisplayName(),
 				Address:    entry.Address,
+				Command:    entry.Command,
 				Kind:       entry.Kind,
 				KindSearch: entry.KindSearch,
 				Mode:       entry.Mode,
@@ -254,6 +255,7 @@ func commandEntries(entries []Entry) []Entry {
 				SourcePath: entry.SourcePath,
 				SourceFile: entry.SourceFile,
 				SourceLine: entry.SourceLine,
+				Editable:   entry.Editable,
 				index:      entry.index,
 				searchData: []weightedField{
 					{value: normalize(entry.DisplayName()), weight: 6},
