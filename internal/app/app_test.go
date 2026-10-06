@@ -28,6 +28,21 @@ func TestPromptCommandRunPrintsCommandWithoutConfirmation(t *testing.T) {
 	}
 }
 
+func TestPrintSelectedEntryPrintsSSHConfigBlock(t *testing.T) {
+	entry := notes.Entry{
+		SSHConfigBlock: "Host spb-omada\n  HostName 195.218.230.91\n  User sergeyb\n  LocalForward 8443 192.168.121.5:443",
+		Actions:        []notes.Action{{Cmd: "ssh spb-omada"}},
+	}
+	var stdout bytes.Buffer
+	if err := printSelectedEntry(entry, &stdout); err != nil {
+		t.Fatal(err)
+	}
+	want := entry.SSHConfigBlock + "\n"
+	if stdout.String() != want {
+		t.Fatalf("printed text = %q, want %q", stdout.String(), want)
+	}
+}
+
 func TestRunHeaderSkipsDuplicateActionDescription(t *testing.T) {
 	entry := notes.Entry{Desc: "Vyos-DHCP Chashnikovo показать subnets"}
 	action := &notes.Action{Desc: "Vyos-DHCP Chashnikovo показать subnets"}
@@ -52,8 +67,8 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "f 0.9.7" {
-		t.Fatalf("version = %q, want %q", got, "f 0.9.7")
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.9.8" {
+		t.Fatalf("version = %q, want %q", got, "f 0.9.8")
 	}
 }
 

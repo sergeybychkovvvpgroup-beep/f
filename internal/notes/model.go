@@ -98,29 +98,30 @@ func (r *RunCommands) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type Entry struct {
-	Desc         string          `yaml:"desc"`
-	Address      string          `yaml:"-"`
-	Command      string          `yaml:"-"`
-	Kind         string          `yaml:"-"`
-	KindSearch   string          `yaml:"-"`
-	ActionCmd    string          `yaml:"action"`
-	Text         string          `yaml:"text"`
-	Cmd          string          `yaml:"cmd"`
-	Mode         string          `yaml:"mode"`
-	Actions      []Action        `yaml:"actions"`
-	Run          RunCommands     `yaml:"run"`
-	Note         string          `yaml:"note"`
-	Banner       string          `yaml:"banner"`
-	SourcePath   string          `yaml:"-"`
-	SourceFile   string          `yaml:"-"`
-	SourceLine   int             `yaml:"-"`
-	SourceKind   string          `yaml:"-"`
-	Editable     bool            `yaml:"-"`
-	Lite         bool            `yaml:"-"`
-	GroupEntries []Entry         `yaml:"-"`
-	GroupSummary string          `yaml:"-"`
-	searchData   []weightedField `yaml:"-"`
-	index        int
+	Desc           string          `yaml:"desc"`
+	Address        string          `yaml:"-"`
+	Command        string          `yaml:"-"`
+	SSHConfigBlock string          `yaml:"-"`
+	Kind           string          `yaml:"-"`
+	KindSearch     string          `yaml:"-"`
+	ActionCmd      string          `yaml:"action"`
+	Text           string          `yaml:"text"`
+	Cmd            string          `yaml:"cmd"`
+	Mode           string          `yaml:"mode"`
+	Actions        []Action        `yaml:"actions"`
+	Run            RunCommands     `yaml:"run"`
+	Note           string          `yaml:"note"`
+	Banner         string          `yaml:"banner"`
+	SourcePath     string          `yaml:"-"`
+	SourceFile     string          `yaml:"-"`
+	SourceLine     int             `yaml:"-"`
+	SourceKind     string          `yaml:"-"`
+	Editable       bool            `yaml:"-"`
+	Lite           bool            `yaml:"-"`
+	GroupEntries   []Entry         `yaml:"-"`
+	GroupSummary   string          `yaml:"-"`
+	searchData     []weightedField `yaml:"-"`
+	index          int
 }
 
 const (

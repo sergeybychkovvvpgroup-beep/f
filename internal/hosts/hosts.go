@@ -229,16 +229,17 @@ func ToEntries(list []Host) []notes.Entry {
 		kindSearch := entryKindSearch(kind)
 		searchParts := []string{h.Name, h.Host, h.User, h.Desc, cmd, kindSearch}
 		entries = append(entries, notes.Entry{
-			Desc:       label,
-			Address:    hostAddress(h),
-			Command:    displayCommand(h, cmd),
-			Kind:       kind,
-			KindSearch: kindSearch,
-			Mode:       mode,
-			SourcePath: h.SourcePath,
-			SourceLine: h.SourceLine,
-			Editable:   h.SSHSource && looksLikePlainSSH(cmd),
-			Note:       strings.Join(searchParts, " "),
+			Desc:           label,
+			Address:        hostAddress(h),
+			Command:        displayCommand(h, cmd),
+			SSHConfigBlock: sshConfigBlock(h),
+			Kind:           kind,
+			KindSearch:     kindSearch,
+			Mode:           mode,
+			SourcePath:     h.SourcePath,
+			SourceLine:     h.SourceLine,
+			Editable:       h.SSHSource && looksLikePlainSSH(cmd),
+			Note:           strings.Join(searchParts, " "),
 			Actions: []notes.Action{{
 				Desc:   detail,
 				Cmd:    cmd,
@@ -247,6 +248,22 @@ func ToEntries(list []Host) []notes.Entry {
 		})
 	}
 	return entries
+}
+
+func sshConfigBlock(h Host) string {
+	if !h.SSHSource || strings.TrimSpace(h.Name) == "" {
+		return ""
+	}
+	lines := []string{"Host " + strings.TrimSpace(h.Name)}
+	for _, directive := range h.SSHDirectives {
+		key := strings.TrimSpace(directive.Key)
+		value := strings.TrimSpace(directive.Value)
+		if key == "" || value == "" {
+			continue
+		}
+		lines = append(lines, "  "+key+" "+value)
+	}
+	return strings.Join(lines, "\n")
 }
 
 func displayCommand(h Host, fallback string) string {

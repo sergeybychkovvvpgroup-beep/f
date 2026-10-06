@@ -26,9 +26,9 @@ func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	}
 }
 
-func TestPickerShowsFullCommandInlineAfterInterpunctWhenEnabled(t *testing.T) {
+func TestPickerShowsAddressInRowsAndSelectedCommandBelow(t *testing.T) {
 	entry := notes.Entry{
-		Desc:    "gateway",
+		Desc:    "gateway-production-primary",
 		Address: "operator@192.0.2.10:2222",
 		Command: "ssh -p 2222 operator@192.0.2.10",
 		Kind:    "host",
@@ -36,15 +36,146 @@ func TestPickerShowsFullCommandInlineAfterInterpunctWhenEnabled(t *testing.T) {
 	}
 	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
 	m.width, m.height = 100, 8
-	if got := m.resultRowHeight(); got != 1 {
-		t.Fatalf("command mode row height = %d, want 1", got)
-	}
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "│ gateway · ssh -p 2222 operator@192.0.2.10") {
-		t.Fatalf("full command is not rendered inline after an interpunct: %q", plain)
+	if !strings.Contains(plain, "│ gateway-production-primary · operator@192.0.2.10:2222") {
+		t.Fatalf("selected row does not preserve the full name and short address: %q", plain)
 	}
-	if strings.Contains(plain, "gateway · operator@192.0.2.10:2222") {
-		t.Fatalf("row still renders the bare address instead of the command: %q", plain)
+	if !strings.Contains(plain, "ssh -p 2222 operator@192.0.2.10") {
+		t.Fatalf("selected row does not show its full command below: %q", plain)
+	}
+}
+
+func TestUnselectedRowsDoNotRepeatFullCommands(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "selected", Address: "root@192.0.2.1", Command: "ssh -o ProxyJump=jump root@192.0.2.1", Actions: []notes.Action{{Cmd: "ssh selected"}}},
+		{Desc: "unselected-long-name-that-must-stay-complete", Address: "admin@192.0.2.2", Command: "ssh -o ProxyJump=jump admin@192.0.2.2", Actions: []notes.Action{{Cmd: "ssh unselected"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 10, ShowAddress: true})
+	m.width, m.height = 100, 10
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "unselected-long-name-that-must-stay-complete · admin@192.0.2.2") {
+		t.Fatalf("unselected row lost its full name or address: %q", plain)
+	}
+	if strings.Count(plain, "ssh -o ProxyJump=jump") != 1 {
+		t.Fatalf("full command should appear only for the selected row: %q", plain)
+	}
+}
+
+func TestResultLineNeverTruncatesEntryName(t *testing.T) {
+	name := "omada-chashnikovo-production-controller"
+	target := "operator@192.0.2.10"
+	got := compactResultLine(name, target, 30)
+	if !strings.Contains(got, name) || strings.Contains(strings.Split(got, " · ")[0], "…") {
+		t.Fatalf("entry name was truncated: %q", got)
+	}
+}
+
+func TestNarrowLongNameAndTargetUseExplicitViewportSafeLines(t *testing.T) {
+	name := strings.Repeat("long-name-", 8)
+	target := "operator@192.0.2.10"
+	entry := notes.Entry{Desc: name, Address: target, Command: "ssh " + target, Actions: []notes.Action{{Cmd: "ssh long"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 10, ShowAddress: true})
+	m.width, m.height = 42, 10
+	plain := stripANSI(m.View())
+	compact := strings.NewReplacer(" ", "", "	", "", "\n", "", "\r", "").Replace(plain)
+	if !strings.Contains(compact, strings.ReplaceAll(name, " ", "")) || !strings.Contains(compact, strings.ReplaceAll(target, " ", "")) {
+		t.Fatalf("wrapped row lost name or target: %q", plain)
+	}
+	for _, line := range strings.Split(plain, "\n") {
+		if width := ansi.StringWidth(strings.TrimRight(line, " ")); width > 42 {
+			t.Fatalf("rendered line width = %d, want <= 42: %q", width, line)
+		}
+	}
+}
+
+func TestUnselectedCommandOnlyEntryDoesNotRepeatCommand(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "one", Command: "ssh one", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Command: "ssh two", Actions: []notes.Action{{Cmd: "ssh two"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 10, ShowAddress: true})
+	m.width, m.height = 80, 10
+	plain := stripANSI(m.View())
+	if strings.Contains(plain, "two · ssh two") {
+		t.Fatalf("unselected command-only entry repeated its command: %q", plain)
+	}
+}
+
+func TestSelectedCommandTailIsNotClippedByCompactHeight(t *testing.T) {
+	command := "ssh " + strings.Repeat("-o ServerAliveInterval=30 ", 12) + "operator@192.0.2.10 final-token"
+	entry := notes.Entry{Desc: "gateway", Address: "operator@192.0.2.10", Command: command, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
+	m.width, m.height = 52, 8
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "final-token") || !strings.Contains(plain, "…") {
+		t.Fatalf("oversized selected command did not preserve its tail with an explicit omission marker: %q", plain)
+	}
+	if lines := strings.Count(plain, "\n") + 1; lines > 8 {
+		t.Fatalf("picker rendered %d lines into an 8-line viewport: %q", lines, plain)
+	}
+}
+
+func TestSelectedCommandWrapsSingleLongTokenByDisplayWidth(t *testing.T) {
+	command := strings.Repeat("界", 30)
+	for _, line := range selectedCommandLines(command, 24) {
+		if width := ansi.StringWidth(line); width > 20 {
+			t.Fatalf("selected command line width = %d, want <= 20: %q", width, line)
+		}
+	}
+}
+
+func TestLongAddresslessNameWrapsWhenHeightAllows(t *testing.T) {
+	name := strings.Repeat("ordinary-name-", 6)
+	entry := notes.Entry{Desc: name, Command: "ssh alias", Actions: []notes.Action{{Cmd: "ssh alias"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 20, ShowAddress: true})
+	m.width, m.height = 42, 20
+	plain := stripANSI(m.View())
+	compact := strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "").Replace(plain)
+	if !strings.Contains(compact, name) {
+		t.Fatalf("long addressless name was truncated instead of wrapped: %q", plain)
+	}
+}
+
+func TestMinimumViewportPreservesCompleteWrappedTarget(t *testing.T) {
+	target := "user@final-target.example"
+	entry := notes.Entry{Desc: strings.Repeat("selected-name-", 8), Address: target, Command: "ssh " + target, Actions: []notes.Action{{Cmd: "ssh alias"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 6, ShowAddress: true})
+	m.width, m.height = 20, 6
+	plain := stripANSI(m.View())
+	compact := strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "").Replace(plain)
+	if !strings.Contains(compact, target) {
+		t.Fatalf("minimum viewport lost part of wrapped target: %q", plain)
+	}
+}
+
+func TestRowsStayContiguousAroundCursor(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "zero", Address: "u@0", Command: "ssh u@0", Actions: []notes.Action{{Cmd: "ssh zero"}}},
+		{Desc: strings.Repeat("huge-", 25), Address: "u@1", Command: "ssh u@1", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Address: "u@2", Command: "ssh u@2", Actions: []notes.Action{{Cmd: "ssh two"}}},
+		{Desc: "three", Address: "u@3", Command: "ssh u@3", Actions: []notes.Action{{Cmd: "ssh three"}}},
+		{Desc: "four", Address: "u@4", Command: "ssh u@4", Actions: []notes.Action{{Cmd: "ssh four"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 10, ShowAddress: true})
+	m.width, m.height, m.cursor = 42, 10, 2
+	plain := stripANSI(m.View())
+	if strings.Contains(plain, "zero") && !strings.Contains(plain, "huge-") {
+		t.Fatalf("viewport skipped an intervening row and showed a farther row: %q", plain)
+	}
+}
+
+func TestOversizedSelectedRowUsesExplicitBoundedOmission(t *testing.T) {
+	name := strings.Repeat("very-long-name-", 30)
+	target := "operator@192.0.2.10"
+	entry := notes.Entry{Desc: name, Address: target, Command: "ssh " + target, Actions: []notes.Action{{Cmd: "ssh alias"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
+	m.width, m.height = 42, 8
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "…") || !strings.Contains(plain, target) {
+		t.Fatalf("oversized row lacks an explicit omission marker or target: %q", plain)
+	}
+	if lines := strings.Count(plain, "\n") + 1; lines > 8 {
+		t.Fatalf("oversized row escaped viewport: %q", plain)
 	}
 }
 
@@ -123,6 +254,36 @@ func TestTruncateLeftWidthPreservesGraphemeClusters(t *testing.T) {
 	}
 	if got := truncateLeftWidth("prefix🇺🇸", 1); got != "" {
 		t.Fatalf("flag grapheme was split: %q", got)
+	}
+}
+
+func TestSelectedCommandWrapsAtArgumentBoundaries(t *testing.T) {
+	command := "ssh -o ProxyJump=access.example -o 'IdentityFile=~/.ssh/id_ed25519' operator@192.0.2.10"
+	lines := selectedCommandLines(command, 52)
+	if len(lines) < 2 {
+		t.Fatalf("command was not wrapped: %q", lines)
+	}
+	for _, line := range lines {
+		if strings.Count(line, "'")%2 != 0 {
+			t.Fatalf("command line split a quoted argument: %q", lines)
+		}
+	}
+	if got := strings.Join(lines, " "); got != command {
+		t.Fatalf("wrapped command changed text: %q", got)
+	}
+}
+
+func TestCompactHeightIncludesSelectedCommandAndOtherRows(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "one", Address: "root@192.0.2.1", Command: "ssh -o ProxyJump=access.example -o 'IdentityFile=~/.ssh/id_ed25519' root@192.0.2.1", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Address: "root@192.0.2.2", Command: "ssh root@192.0.2.2", Actions: []notes.Action{{Cmd: "ssh two"}}},
+		{Desc: "three", Address: "root@192.0.2.3", Command: "ssh root@192.0.2.3", Actions: []notes.Action{{Cmd: "ssh three"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 12, ShowAddress: true})
+	m.width, m.height = 80, 12
+	plain := stripANSI(m.View())
+	if !strings.Contains(plain, "two · root@192.0.2.2") || !strings.Contains(plain, "three · root@192.0.2.3") {
+		t.Fatalf("selected command preview hid ordinary rows: %q", plain)
 	}
 }
 
@@ -293,6 +454,34 @@ func TestTabOpensDetailedEntryView(t *testing.T) {
 	} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("detail view is missing %q: %q", want, plain)
+		}
+	}
+}
+
+func TestTabShowsSSHConfigBlockWithoutServiceMetadata(t *testing.T) {
+	block := "Host spb-omada\n  HostName 195.218.230.91\n  User sergeyb\n  LocalForward 8443 192.168.121.5:443"
+	entry := notes.Entry{
+		Desc:           "spb-omada [remote 192.168.121.5:443]",
+		Address:        "sergeyb@195.218.230.91",
+		Kind:           "fwd",
+		Mode:           "forwards",
+		SSHConfigBlock: block,
+		Actions:        []notes.Action{{Desc: "sergeyb@195.218.230.91", Cmd: "ssh spb-omada"}},
+	}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 12, ShowAddress: true})
+	m.width, m.height = 100, 12
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	plain := stripANSI(updated.(PickerModel).View())
+	for _, want := range []string{
+		"Host spb-omada", "HostName 195.218.230.91", "User sergeyb", "LocalForward 8443 192.168.121.5:443",
+	} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("details do not show SSH config directive %q: %q", want, plain)
+		}
+	}
+	for _, unwanted := range []string{"DETAILS", "Name  ", "Address  ", "Type  ", "Mode  ", "About  ", "Command\n"} {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("details contain service metadata %q: %q", unwanted, plain)
 		}
 	}
 }
@@ -593,6 +782,20 @@ func TestRunningSyncUsesBubblesSpinner(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{InitialSync: SyncStatus{State: SyncStateRunning}})
 	if got := stripANSI(m.renderSyncStatus()); !strings.Contains(got, "⠋") || !strings.Contains(got, "sync") {
 		t.Fatalf("running sync status does not use spinner bubble: %q", got)
+	}
+}
+
+func TestDetailCommandWrappingUsesTerminalDisplayWidth(t *testing.T) {
+	block := "Host alias\n  HostName " + strings.Repeat("界", 20)
+	entry := notes.Entry{Desc: "alias", SSHConfigBlock: block, Actions: []notes.Action{{Cmd: "ssh alias"}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 30, 8
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	plain := stripANSI(opened.(PickerModel).View())
+	for _, line := range strings.Split(plain, "\n") {
+		if width := ansi.StringWidth(strings.TrimRight(line, " ")); width > 30 {
+			t.Fatalf("detail line width = %d, want <= 30: %q", width, line)
+		}
 	}
 }
 

@@ -7,3 +7,5 @@ coverage.out
 .idea/
 .vscode/
 .local/
+__pycache__/
+*.pyc

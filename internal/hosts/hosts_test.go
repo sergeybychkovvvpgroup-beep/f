@@ -272,6 +272,23 @@ func TestToEntriesAddsSearchableKindWithoutChangingCommand(t *testing.T) {
 	}
 }
 
+func TestSSHEntryCarriesConfigBlockForDetailsAndPrinting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "f.conf")
+	raw := "Host spb-omada\n  HostName 195.218.230.91\n  User sergeyb\n  LocalForward 8443 192.168.121.5:443\n"
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries := ToEntries(loadSSHConfigFile(path, map[string]bool{}))
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	want := "Host spb-omada\n  HostName 195.218.230.91\n  User sergeyb\n  LocalForward 8443 192.168.121.5:443"
+	if entries[0].SSHConfigBlock != want {
+		t.Fatalf("SSH config block = %q, want %q", entries[0].SSHConfigBlock, want)
+	}
+}
+
 func TestSSHConfigEntryKeepsSourceLocationInPickerEntry(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "config")

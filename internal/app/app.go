@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	version     = "0.9.7"
+	version     = "0.9.8"
 	buildCommit = "unknown"
 )
 
@@ -105,10 +105,22 @@ func runInteractive(args []string, stdin io.Reader, stdout, stderr io.Writer) er
 		return errors.New("selected entry has no ssh command")
 	}
 	if printOnly {
-		fmt.Fprintln(stdout, strings.TrimSpace(action.Cmd))
-		return nil
+		return printSelectedEntry(*selected, stdout)
 	}
 	return runCommand(*selected, action, stdout, stderr)
+}
+
+func printSelectedEntry(entry notes.Entry, stdout io.Writer) error {
+	text := strings.TrimSpace(entry.SSHConfigBlock)
+	if text == "" {
+		action := entry.QuickAction()
+		if action == nil || !action.IsCmd() {
+			return errors.New("selected entry has no printable command")
+		}
+		text = strings.TrimSpace(action.Cmd)
+	}
+	_, err := fmt.Fprintln(stdout, text)
+	return err
 }
 
 func pickerOptions(cfg config.File, syncStatus ui.SyncStatus) ui.Options {

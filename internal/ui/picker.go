@@ -262,7 +262,7 @@ func (m PickerModel) View() string {
 	body := []string{}
 	if m.shouldRenderResults() {
 		body = m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle)
-		limit := m.maxVisibleItems() * m.resultRowHeight()
+		limit := m.maxResultLines()
 		if len(body) > limit {
 			body = body[:limit]
 		}
@@ -319,6 +319,13 @@ func (m PickerModel) detailBodyLines(width int, rowStyle, detailStyle, labelStyl
 		return nil
 	}
 	entry := m.matches[m.cursor].Entry
+	if block := strings.TrimSpace(entry.SSHConfigBlock); block != "" {
+		lines := make([]string, 0, strings.Count(block, "\n")+1)
+		for _, line := range detailCommandLines(block, width) {
+			lines = append(lines, rowStyle.Render(line))
+		}
+		return lines
+	}
 	badge := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#171717")).
 		Background(lipgloss.Color(m.theme.InputPrompt)).
@@ -356,19 +363,7 @@ func detailCommandLines(command string, width int) []string {
 	}
 	var lines []string
 	for _, rawLine := range strings.Split(command, "\n") {
-		runes := []rune(rawLine)
-		for len(runes) > width {
-			cut := width
-			for i := width - 1; i > 0; i-- {
-				if runes[i] == ' ' || runes[i] == '	' {
-					cut = i + 1
-					break
-				}
-			}
-			lines = append(lines, string(runes[:cut]))
-			runes = runes[cut:]
-		}
-		lines = append(lines, string(runes))
+		lines = append(lines, wrapDisplayWidthPreferSpaces(rawLine, width)...)
 	}
 	return lines
 }
@@ -546,20 +541,25 @@ func (m PickerModel) offset() int {
 }
 
 func (m PickerModel) maxVisibleItems() int {
-	available := m.viewHeight() - 5
+	available := m.maxResultLines()
 	if available < 1 {
 		available = 1
 	}
-	rowHeight := m.resultRowHeight()
-	maxItems := available / rowHeight
-	minimum := 2
-	if rowHeight > 1 {
-		minimum = 1
+	if m.options.ShowAddress && len(m.matches) > 0 && m.cursor >= 0 && m.cursor < len(m.matches) {
+		available -= len(selectedCommandLines(m.matches[m.cursor].Entry.Command, m.contentWidth()))
+		if available < 1 {
+			available = 1
+		}
 	}
-	if maxItems < minimum {
-		maxItems = minimum
+	return available
+}
+
+func (m PickerModel) maxResultLines() int {
+	available := m.viewHeight() - 3
+	if available < 1 {
+		return 1
 	}
-	return maxItems
+	return available
 }
 
 func pickerProgramOptions(_ Options) []tea.ProgramOption {
@@ -644,11 +644,19 @@ func (m PickerModel) viewHeight() int {
 	if m.options.FullScreen {
 		return maximum
 	}
-	results := len(m.matches)
-	if results == 0 {
-		results = 1
+	resultLines := 0
+	emptyStyle := lipgloss.NewStyle()
+	for index, match := range m.matches {
+		resultLines += len(m.renderMatchLabelLines(match, match.Entry, m.contentWidth(), index == m.cursor, emptyStyle, emptyStyle, emptyStyle))
 	}
-	desired := results*m.resultRowHeight() + 5
+	if resultLines == 0 {
+		resultLines = 1
+	}
+	extra := 0
+	if m.options.ShowAddress && len(m.matches) > 0 && m.cursor >= 0 && m.cursor < len(m.matches) {
+		extra = len(selectedCommandLines(m.matches[m.cursor].Entry.Command, m.contentWidth()))
+	}
+	desired := resultLines + extra + 3
 	if desired < 8 {
 		desired = 8
 	}
@@ -983,22 +991,134 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		return []string{detailStyle.Render("No matches")}
 	}
 
-	visible := m.visibleMatches()
 	type renderedRow struct {
 		lines []string
 	}
-	rows := make([]renderedRow, 0, len(visible))
-	for i, match := range visible {
-		index := i + m.offset()
+	budget := m.maxResultLines()
+	rows := make([]renderedRow, 0, len(m.matches))
+	for index, match := range m.matches {
 		entry := match.Entry
 		selected := index == m.cursor
-		rowLines := []string{m.renderMatchLabelLine(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)}
+		rowLines := m.renderMatchLabelLines(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)
+		if selected {
+			rowLines = fitSelectedLabelLines(rowLines, entry.Address, width, budget, detailStyle)
+		}
+		if selected && m.options.ShowAddress {
+			commandSlots := maxInt(0, budget-len(rowLines))
+			commandLines := fitSelectedCommandLines(selectedCommandLines(entry.Command, width), commandSlots, maxInt(8, width-4))
+			for _, commandLine := range commandLines {
+				rowLines = append(rowLines, detailStyle.Render("    "+commandLine))
+			}
+		}
 		rows = append(rows, renderedRow{lines: rowLines})
 	}
 
-	lines := make([]string, 0, len(visible)*maxInt(2, m.resultRowHeight()))
-	for _, row := range rows {
-		lines = append(lines, row.lines...)
+	selectedIndex := minInt(maxInt(0, m.cursor), len(rows)-1)
+	chosen := map[int]bool{selectedIndex: true}
+	remaining := budget - len(rows[selectedIndex].lines)
+	blockedAbove, blockedBelow := false, false
+	for distance := 1; remaining > 0 && (!blockedAbove || !blockedBelow); distance++ {
+		above := selectedIndex - distance
+		if !blockedAbove {
+			if above < 0 {
+				blockedAbove = true
+			} else if len(rows[above].lines) > remaining {
+				blockedAbove = true
+			} else {
+				chosen[above] = true
+				remaining -= len(rows[above].lines)
+			}
+		}
+		below := selectedIndex + distance
+		if !blockedBelow {
+			if below >= len(rows) {
+				blockedBelow = true
+			} else if len(rows[below].lines) > remaining {
+				blockedBelow = true
+			} else {
+				chosen[below] = true
+				remaining -= len(rows[below].lines)
+			}
+		}
+	}
+	lines := make([]string, 0, budget)
+	for index, row := range rows {
+		if chosen[index] {
+			lines = append(lines, row.lines...)
+		}
+	}
+	return lines
+}
+
+func fitSelectedLabelLines(lines []string, target string, width, budget int, detailStyle lipgloss.Style) []string {
+	if budget <= 0 || len(lines) == 0 {
+		return nil
+	}
+	if len(lines) <= budget {
+		return lines
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		if budget == 1 {
+			return []string{detailStyle.Render("…")}
+		}
+		out := append([]string(nil), lines[:budget-1]...)
+		out = append(out, detailStyle.Render("…"))
+		return out
+	}
+	targetWidth := maxInt(4, maxInt(12, width)-ansi.StringWidth("    "))
+	targetCount := len(wrapDisplayWidth(target, targetWidth))
+	if targetCount >= budget {
+		if targetCount <= len(lines) {
+			return append([]string(nil), lines[len(lines)-targetCount:]...)
+		}
+		return append([]string(nil), lines[len(lines)-budget:]...)
+	}
+	nameSlots := budget - targetCount
+	nameLines := lines[:len(lines)-targetCount]
+	targetLines := lines[len(lines)-targetCount:]
+	out := append([]string(nil), nameLines[:minInt(len(nameLines), nameSlots)]...)
+	if len(nameLines) > nameSlots && len(out) > 0 {
+		out[len(out)-1] = detailStyle.Render("…")
+	}
+	out = append(out, targetLines...)
+	return out
+}
+
+func (m PickerModel) renderMatchLabelLines(match notes.Match, entry notes.Entry, width int, selected bool, rowStyle, selectedStyle, detailStyle lipgloss.Style) []string {
+	label := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
+	target := strings.Join(strings.Fields(strings.TrimSpace(entry.Address)), " ")
+	prefix := "  "
+	if selected {
+		prefix = m.theme.SelectedMark + " "
+	}
+	rowWidth := maxInt(12, width)
+	contentWidth := maxInt(8, rowWidth-ansi.StringWidth(prefix))
+	if !m.options.ShowAddress || (target == "" && ansi.StringWidth(label) <= contentWidth) || (target != "" && ansi.StringWidth(label)+3+ansi.StringWidth(target) <= contentWidth) {
+		return []string{m.renderMatchLabelLine(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)}
+	}
+	primaryStyle := rowStyle
+	if selected {
+		primaryStyle = selectedStyle
+	}
+	query := strings.TrimSpace(m.input.Value())
+	primaryMatchStyle := primaryStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+	detailMatchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
+	lines := []string{}
+	for index, part := range wrapDisplayWidth(label, contentWidth) {
+		linePrefix := "  "
+		if index == 0 {
+			linePrefix = prefix
+		}
+		lines = append(lines, primaryStyle.Render(linePrefix)+renderFuzzyText(part, query, primaryStyle, primaryMatchStyle))
+	}
+	if target == "" {
+		return lines
+	}
+	targetPrefix := "    "
+	targetWidth := maxInt(4, rowWidth-ansi.StringWidth(targetPrefix))
+	for _, part := range wrapDisplayWidth(target, targetWidth) {
+		lines = append(lines, detailStyle.Render(targetPrefix)+renderFuzzyText(part, query, detailStyle, detailMatchStyle))
 	}
 	return lines
 }
@@ -1014,10 +1134,7 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 
 	detailText := match.Detail
 	if m.options.ShowAddress {
-		detailText = entry.Command
-		if strings.TrimSpace(detailText) == "" {
-			detailText = entry.Address
-		}
+		detailText = entry.Address
 	}
 	if m.showInlinePreview() && selected && !entry.HasCmd() {
 		preview := m.cachedPreview(entry)
@@ -1127,29 +1244,21 @@ func compactResultLine(primary, secondary string, width int) string {
 	}
 
 	const gap = 3
-	const minPrimaryWidth = 18
 	const separator = " · "
-	if width <= minPrimaryWidth {
-		return truncateRunes(primary, width)
+	primaryWidth := ansi.StringWidth(primary)
+	if primaryWidth >= width {
+		return primary
 	}
-
-	availableSecondaryWidth := width - minPrimaryWidth - gap
-	if availableSecondaryWidth < 0 {
-		availableSecondaryWidth = 0
+	availableSecondaryWidth := width - primaryWidth - gap
+	if availableSecondaryWidth <= 0 {
+		return primary
 	}
-	maxSecondaryWidth := availableSecondaryWidth
-
-	secondary = truncateMiddleRunes(secondary, maxSecondaryWidth)
+	secondary = truncateMiddleRunes(secondary, availableSecondaryWidth)
 	secondaryWidth := ansi.StringWidth(secondary)
 	if secondaryWidth == 0 {
-		return truncateRunes(primary, width)
+		return primary
 	}
-
-	primaryWidth := width - secondaryWidth - gap
-	if primaryWidth < 1 {
-		return truncateRunes(primary, width)
-	}
-	return truncateRunes(primary, primaryWidth) + separator + secondary
+	return primary + separator + secondary
 }
 
 func compactResultSplit(primary, secondary string, width int) int {
@@ -1160,29 +1269,184 @@ func compactResultSplit(primary, secondary string, width int) int {
 	}
 
 	const gap = 3
-	const minPrimaryWidth = 18
-	if width <= minPrimaryWidth {
-		return utf8.RuneCountInString(truncateRunes(primary, width))
+	primaryWidth := ansi.StringWidth(primary)
+	if primaryWidth >= width {
+		return utf8.RuneCountInString(primary)
 	}
-
-	availableSecondaryWidth := width - minPrimaryWidth - gap
-	if availableSecondaryWidth < 0 {
-		availableSecondaryWidth = 0
+	availableSecondaryWidth := width - primaryWidth - gap
+	if availableSecondaryWidth <= 0 {
+		return utf8.RuneCountInString(primary)
 	}
-	maxSecondaryWidth := availableSecondaryWidth
-
-	secondary = truncateMiddleRunes(secondary, maxSecondaryWidth)
+	secondary = truncateMiddleRunes(secondary, availableSecondaryWidth)
 	secondaryWidth := ansi.StringWidth(secondary)
 	if secondaryWidth == 0 {
-		return utf8.RuneCountInString(truncateRunes(primary, width))
+		return utf8.RuneCountInString(primary)
 	}
+	return utf8.RuneCountInString(primary) + gap
+}
 
-	primaryWidth := width - secondaryWidth - gap
-	if primaryWidth < 1 {
-		return utf8.RuneCountInString(truncateRunes(primary, width))
+func selectedCommandLines(command string, width int) []string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil
 	}
-	left := truncateRunes(primary, primaryWidth)
-	return utf8.RuneCountInString(left) + gap
+	width = maxInt(8, width-4)
+	words := splitDisplayWords(command)
+	if len(words) == 0 {
+		return nil
+	}
+	lines := []string{}
+	current := ""
+	for _, word := range words {
+		if current == "" && ansi.StringWidth(word) > width {
+			wrapped := wrapDisplayWidth(word, width)
+			lines = append(lines, wrapped[:len(wrapped)-1]...)
+			current = wrapped[len(wrapped)-1]
+			continue
+		}
+		candidate := word
+		if current != "" {
+			candidate = current + " " + word
+		}
+		if current == "" || ansi.StringWidth(candidate) <= width {
+			current = candidate
+			continue
+		}
+		lines = append(lines, current)
+		if ansi.StringWidth(word) <= width {
+			current = word
+			continue
+		}
+		wrapped := wrapDisplayWidth(word, width)
+		lines = append(lines, wrapped[:len(wrapped)-1]...)
+		current = wrapped[len(wrapped)-1]
+	}
+	if current != "" {
+		lines = append(lines, current)
+	}
+	return lines
+}
+
+func fitSelectedCommandLines(lines []string, slots, width int) []string {
+	if slots <= 0 || len(lines) == 0 {
+		return nil
+	}
+	if len(lines) <= slots {
+		return lines
+	}
+	if slots == 1 {
+		return []string{truncateMiddleRunes(strings.Join(lines, " "), width)}
+	}
+	out := append([]string(nil), lines[:slots-1]...)
+	last := "… " + truncateLeftWidth(lines[len(lines)-1], maxInt(1, width-2))
+	out = append(out, last)
+	return out
+}
+
+func splitDisplayWords(value string) []string {
+	words := []string{}
+	var word strings.Builder
+	var quote rune
+	escaped := false
+	flush := func() {
+		if word.Len() > 0 {
+			words = append(words, word.String())
+			word.Reset()
+		}
+	}
+	for _, char := range value {
+		if escaped {
+			word.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			word.WriteRune(char)
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			word.WriteRune(char)
+			if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		if char == '\'' || char == '"' {
+			quote = char
+			word.WriteRune(char)
+			continue
+		}
+		if char == ' ' || char == '	' || char == '\n' || char == '\r' {
+			flush()
+			continue
+		}
+		word.WriteRune(char)
+	}
+	flush()
+	return words
+}
+
+func wrapDisplayWidthPreferSpaces(value string, width int) []string {
+	if width <= 0 || ansi.StringWidth(value) <= width {
+		return []string{value}
+	}
+	lines := []string{}
+	remaining := value
+	for ansi.StringWidth(remaining) > width {
+		graphemes := uniseg.NewGraphemes(remaining)
+		usedWidth := 0
+		cut := 0
+		spaceCut := 0
+		for graphemes.Next() {
+			cluster := graphemes.Str()
+			clusterWidth := ansi.StringWidth(cluster)
+			if cut > 0 && usedWidth+clusterWidth > width {
+				break
+			}
+			usedWidth += clusterWidth
+			_, end := graphemes.Positions()
+			cut = end
+			if strings.TrimSpace(cluster) == "" {
+				spaceCut = end
+			}
+		}
+		if spaceCut > 0 {
+			cut = spaceCut
+		}
+		if cut <= 0 || cut >= len(remaining) {
+			break
+		}
+		lines = append(lines, remaining[:cut])
+		remaining = remaining[cut:]
+	}
+	lines = append(lines, remaining)
+	return lines
+}
+
+func wrapDisplayWidth(value string, width int) []string {
+	if width <= 0 {
+		return []string{value}
+	}
+	graphemes := uniseg.NewGraphemes(value)
+	lines := []string{}
+	var line strings.Builder
+	lineWidth := 0
+	for graphemes.Next() {
+		cluster := graphemes.Str()
+		clusterWidth := ansi.StringWidth(cluster)
+		if lineWidth > 0 && lineWidth+clusterWidth > width {
+			lines = append(lines, line.String())
+			line.Reset()
+			lineWidth = 0
+		}
+		line.WriteString(cluster)
+		lineWidth += clusterWidth
+	}
+	if line.Len() > 0 {
+		lines = append(lines, line.String())
+	}
+	return lines
 }
 
 func (m *PickerModel) moveCursor(delta int) {
