@@ -196,7 +196,6 @@ func (m PickerModel) View() string {
 	input := m.input
 	input.Width = m.inputWidth()
 	inputLine := lipgloss.NewStyle().
-		Background(lipgloss.Color("#202027")).
 		Width(contentWidth).
 		Render(truncateRunes(input.View(), contentWidth))
 	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)

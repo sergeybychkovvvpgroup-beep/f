@@ -50,8 +50,8 @@ func TestVersionReportsCurrentRelease(t *testing.T) {
 	if err := Run([]string{"version"}, strings.NewReader(""), &stdout, &stderr); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(stdout.String()); got != "f 0.8.0" {
-		t.Fatalf("version = %q, want %q", got, "f 0.8.0")
+	if got := strings.TrimSpace(stdout.String()); got != "f 0.8.1" {
+		t.Fatalf("version = %q, want %q", got, "f 0.8.1")
 	}
 }
 

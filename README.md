@@ -9,7 +9,7 @@ It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list,
 Both sizes use a flat interface without an outer frame or background container. In compact mode it stays near the left edge with a small margin, remains width-capped, and uses exactly as many rows as the current results need. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
 
 - small colored active-category badge and counter;
-- query line without a reverse-video block cursor, so transparent terminal backgrounds stay clean;
+- query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
 - single-line results by default, or an optional muted SSH address below each name;
 - colored fuzzy-match characters;

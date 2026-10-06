@@ -116,6 +116,18 @@ func TestTruncateRunesIgnoresANSISequences(t *testing.T) {
 	}
 }
 
+func TestPickerInputLineDoesNotPaintBackground(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+
+	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	if view := m.View(); strings.Contains(view, "\x1b[48;2;32;32;39m") {
+		t.Fatalf("input line paints a dark background block on transparent terminals: %q", view)
+	}
+}
+
 func TestPickerHidesBlockCursorArtifact(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
 	if got := m.input.Cursor.Mode(); got != cursor.CursorHide {
