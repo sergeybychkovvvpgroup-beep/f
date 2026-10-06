@@ -128,6 +128,19 @@ func TestPickerInputLineDoesNotPaintBackground(t *testing.T) {
 	}
 }
 
+func TestReturningFromDetailsKeepsInputBackgroundTransparent(t *testing.T) {
+	previousProfile := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	t.Cleanup(func() { lipgloss.SetColorProfile(previousProfile) })
+	m := NewPicker([]notes.Entry{{Desc: "gateway", Actions: []notes.Action{{Cmd: "ssh gateway"}}}}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 100, 8
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	closed, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if view := closed.(PickerModel).View(); strings.Contains(view, "\x1b[48;2;32;32;39m") {
+		t.Fatalf("returning from details restored the dark input background: %q", view)
+	}
+}
+
 func TestPickerHidesBlockCursorArtifact(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
 	if got := m.input.Cursor.Mode(); got != cursor.CursorHide {
@@ -469,6 +482,83 @@ func TestRunningSyncUsesBubblesSpinner(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{InitialSync: SyncStatus{State: SyncStateRunning}})
 	if got := stripANSI(m.renderSyncStatus()); !strings.Contains(got, "⠋") || !strings.Contains(got, "sync") {
 		t.Fatalf("running sync status does not use spinner bubble: %q", got)
+	}
+}
+
+func TestDetailCommandWrappingPreservesExactCommand(t *testing.T) {
+	command := `ssh host "echo hello  world" | tee /tmp/result\ file`
+	lines := detailCommandLines(command, 18)
+	if got := strings.Join(lines, ""); got != command {
+		t.Fatalf("wrapped command changed bytes:\n got %q\nwant %q", got, command)
+	}
+	if strings.Contains(strings.Join(lines, "\n"), "\\\n") {
+		t.Fatalf("wrapped command inserted shell continuation characters: %q", lines)
+	}
+}
+
+func TestDetailScrollStopsAtBottomAndMovesUpImmediately(t *testing.T) {
+	entry := notes.Entry{Desc: "gateway", Actions: []notes.Action{{Cmd: strings.Repeat("0123456789", 20)}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 36, 8
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	details := opened.(PickerModel)
+	for range 30 {
+		updated, _ := details.Update(tea.KeyMsg{Type: tea.KeyDown})
+		details = updated.(PickerModel)
+	}
+	atBottom := stripANSI(details.View())
+	updated, _ := details.Update(tea.KeyMsg{Type: tea.KeyUp})
+	afterUp := stripANSI(updated.(PickerModel).View())
+	if afterUp == atBottom {
+		t.Fatal("Up did not move immediately after scrolling to the bottom")
+	}
+}
+
+func TestCtrlCQuitsFromDetails(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "gateway", Actions: []notes.Action{{Cmd: "ssh gateway"}}}}, "", DefaultTheme(), Options{Height: 8})
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, cmd := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	got := updated.(PickerModel)
+	if cmd == nil || !got.cancelled {
+		t.Fatalf("Ctrl+C in details did not quit: cmd=%v cancelled=%t", cmd, got.cancelled)
+	}
+}
+
+func TestCtrlYPrintsSelectedEntryFromDetails(t *testing.T) {
+	m := NewPicker([]notes.Entry{{Desc: "gateway", Actions: []notes.Action{{Cmd: "ssh gateway"}}}}, "", DefaultTheme(), Options{Height: 8})
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	updated, cmd := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyCtrlY})
+	got := updated.(PickerModel)
+	if cmd == nil || got.selected == nil || !got.printOnly {
+		t.Fatalf("Ctrl+Y in details did not select for printing: cmd=%v selected=%+v printOnly=%t", cmd, got.selected, got.printOnly)
+	}
+}
+
+func TestDetailsReturnPreservesPickerState(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "alpha", Kind: "host", Actions: []notes.Action{{Cmd: "ssh alpha"}}},
+		{Desc: "beta", Kind: "host", Actions: []notes.Action{{Cmd: "ssh beta"}}},
+	}
+	m := NewPicker(entries, "a", DefaultTheme(), Options{Height: 8})
+	m.cursor = 1
+	m.activeKind = "host"
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	closed, _ := opened.(PickerModel).Update(tea.KeyMsg{Type: tea.KeyEsc})
+	got := closed.(PickerModel)
+	if got.Query() != "a" || got.cursor != 1 || got.activeKind != "host" || got.cancelled {
+		t.Fatalf("picker state changed after details: query=%q cursor=%d kind=%q cancelled=%t", got.Query(), got.cursor, got.activeKind, got.cancelled)
+	}
+}
+
+func TestDetailViewFitsNarrowPanel(t *testing.T) {
+	entry := notes.Entry{Desc: "gateway", Address: "operator@192.0.2.10:2222", Actions: []notes.Action{{Cmd: strings.Repeat("x", 100)}}}
+	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8})
+	m.width, m.height = 42, 8
+	opened, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	for _, line := range strings.Split(stripANSI(opened.(PickerModel).View()), "\n") {
+		if utf8.RuneCountInString(strings.TrimRight(line, " ")) > 40 {
+			t.Fatalf("detail line exceeds panel width: %q", line)
+		}
 	}
 }
 

@@ -38,6 +38,8 @@ type Host struct {
 	Preview       string   `yaml:"preview,omitempty"`
 	Mode          string   `yaml:"-"`
 	ForwardRemote string   `yaml:"-"`
+	SourcePath    string   `yaml:"-"`
+	SourceLine    int      `yaml:"-"`
 }
 
 type File struct {
@@ -219,6 +221,8 @@ func ToEntries(list []Host) []notes.Entry {
 			Kind:       kind,
 			KindSearch: kindSearch,
 			Mode:       mode,
+			SourcePath: h.SourcePath,
+			SourceLine: h.SourceLine,
 			Note:       strings.Join(searchParts, " "),
 			Actions: []notes.Action{{
 				Desc:   detail,
@@ -465,12 +469,13 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 	var current []string
 	attrs := map[string]string{}
 	var pendingTags []string
+	currentLine := 0
 	flush := func() {
 		for _, alias := range current {
 			if alias == "" || strings.ContainsAny(alias, "*?") {
 				continue
 			}
-			h := Host{Name: alias, Host: attrs["hostname"], User: attrs["user"], Tags: append([]string{}, pendingTags...)}
+			h := Host{Name: alias, Host: attrs["hostname"], User: attrs["user"], Tags: append([]string{}, pendingTags...), SourcePath: path, SourceLine: currentLine}
 			if h.Host == "" {
 				h.Host = alias
 			}
@@ -488,7 +493,9 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 		}
 	}
 	s := bufio.NewScanner(file)
+	lineNumber := 0
 	for s.Scan() {
+		lineNumber++
 		raw := strings.TrimSpace(s.Text())
 		if raw == "" {
 			continue
@@ -516,6 +523,7 @@ func loadSSHConfigFile(path string, visited map[string]bool) []Host {
 		case "host":
 			flush()
 			current = fields[1:]
+			currentLine = lineNumber
 			attrs = map[string]string{}
 		default:
 			attrs[key] = value

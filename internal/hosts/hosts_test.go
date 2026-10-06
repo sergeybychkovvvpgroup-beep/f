@@ -1,6 +1,7 @@
 package hosts
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,5 +95,22 @@ func TestToEntriesAddsSearchableKindWithoutChangingCommand(t *testing.T) {
 	}
 	if got := entry.QuickAction().Cmd; got != host.Cmd {
 		t.Fatalf("command = %q, want unchanged %q", got, host.Cmd)
+	}
+}
+
+func TestSSHConfigEntryKeepsSourceLocationInPickerEntry(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "f.conf")
+	content := "# managed hosts\n\nHost gateway\n  HostName 192.0.2.10\n  User operator\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hosts := loadSSHConfigFile(path, map[string]bool{})
+	entries := ToEntries(hosts)
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	if entries[0].SourcePath != path || entries[0].SourceLine != 3 {
+		t.Fatalf("source = %q:%d, want %q:3", entries[0].SourcePath, entries[0].SourceLine, path)
 	}
 }

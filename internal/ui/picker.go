@@ -118,6 +118,7 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyMsg:
 		if m.details {
+			m.detailOffset = minInt(maxInt(0, m.detailOffset), m.detailMaximumOffset())
 			switch msg.String() {
 			case "tab", "esc":
 				m.details = false
@@ -129,8 +130,13 @@ func (m PickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "down", "ctrl+j":
-				m.detailOffset++
+				if m.detailOffset < m.detailMaximumOffset() {
+					m.detailOffset++
+				}
 				return m, nil
+			case "ctrl+c":
+				m.cancelled = true
+				return m, tea.Quit
 			case "enter", "ctrl+enter", "alt+enter", "ctrl+y":
 				if len(m.matches) == 0 {
 					return m, nil
@@ -277,41 +283,20 @@ func (m PickerModel) detailsView(width int, rowStyle, detailStyle, statusStyle l
 	if len(m.matches) == 0 || m.cursor < 0 || m.cursor >= len(m.matches) {
 		return lipgloss.NewStyle().MarginLeft(2).Render(detailStyle.Render("No details"))
 	}
-	entry := m.matches[m.cursor].Entry
-	badge := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#171717")).
-		Background(lipgloss.Color(m.theme.InputPrompt)).
-		Bold(true).
-		Padding(0, 1).
-		Render("DETAILS")
 	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG)).Bold(true)
-	lines := []string{badge}
-	lines = appendDetailField(lines, "Name", entry.DisplayName(), width, labelStyle, rowStyle)
-	lines = appendDetailField(lines, "Address", entry.Address, width, labelStyle, detailStyle)
-	lines = appendDetailField(lines, "Type", entry.Kind, width, labelStyle, rowStyle)
-	lines = appendDetailField(lines, "Mode", entry.Mode, width, labelStyle, rowStyle)
-	if action := entry.PrimaryAction(); action != nil {
-		lines = appendDetailField(lines, "About", action.Desc, width, labelStyle, rowStyle)
-		if command := strings.TrimSpace(action.Cmd); command != "" {
-			lines = append(lines, labelStyle.Render("Command"))
-			for _, line := range commandPreviewLines(command, maxInt(8, width-2)) {
-				lines = append(lines, rowStyle.Render("  "+line))
-			}
-		}
-	}
-	if source := detailSource(entry); source != "" {
-		lines = appendDetailField(lines, "Source", source, width, labelStyle, detailStyle)
-	}
-	footerText := "↑/↓ scroll  •  Tab/Esc back  •  Enter run  •  Ctrl+Y print"
+	lines := m.detailBodyLines(width, rowStyle, detailStyle, labelStyle)
 	maximum := m.effectiveHeight()
 	visibleBody := maxInt(1, maximum-1)
-	if len(lines) > visibleBody {
-		maxOffset := len(lines) - visibleBody
-		start := minInt(maxInt(0, m.detailOffset), maxOffset)
+	maxOffset := maxInt(0, len(lines)-visibleBody)
+	start := minInt(maxInt(0, m.detailOffset), maxOffset)
+	if maxOffset > 0 {
 		lines = append([]string(nil), lines[start:start+visibleBody]...)
-		footerText = fmt.Sprintf("↑/↓ scroll %d/%d  •  Tab/Esc back  •  Enter run", start+1, maxOffset+1)
 	}
-	footer := statusStyle.Render(footerText)
+	footerText := "Tab/Esc back  •  Enter run  •  Ctrl+Y print"
+	if maxOffset > 0 {
+		footerText = fmt.Sprintf("Tab/Esc back  •  Enter run  •  Ctrl+Y print  •  ↑/↓ %d/%d", start+1, maxOffset+1)
+	}
+	footer := statusStyle.Render(truncateRunes(footerText, width))
 	lines = append(lines, footer)
 	if m.options.FullScreen {
 		for len(lines) < maximum {
@@ -320,6 +305,65 @@ func (m PickerModel) detailsView(width int, rowStyle, detailStyle, statusStyle l
 	}
 	content := strings.Join(clipLines(lines, maximum), "\n")
 	return lipgloss.NewStyle().MarginLeft(2).Render(content)
+}
+
+func (m PickerModel) detailBodyLines(width int, rowStyle, detailStyle, labelStyle lipgloss.Style) []string {
+	if len(m.matches) == 0 || m.cursor < 0 || m.cursor >= len(m.matches) {
+		return nil
+	}
+	entry := m.matches[m.cursor].Entry
+	badge := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#171717")).
+		Background(lipgloss.Color(m.theme.InputPrompt)).
+		Bold(true).
+		Padding(0, 1).
+		Render("DETAILS")
+	lines := []string{badge}
+	lines = appendDetailField(lines, "Name", entry.DisplayName(), width, labelStyle, rowStyle)
+	lines = appendDetailField(lines, "Address", entry.Address, width, labelStyle, detailStyle)
+	lines = appendDetailField(lines, "Type", entry.Kind, width, labelStyle, rowStyle)
+	lines = appendDetailField(lines, "Mode", entry.Mode, width, labelStyle, rowStyle)
+	if action := entry.PrimaryAction(); action != nil {
+		lines = appendDetailField(lines, "About", action.Desc, width, labelStyle, rowStyle)
+		if command := action.Cmd; strings.TrimSpace(command) != "" {
+			lines = append(lines, labelStyle.Render("Command"))
+			for _, line := range detailCommandLines(command, maxInt(8, width-2)) {
+				lines = append(lines, rowStyle.Render("  "+line))
+			}
+		}
+	}
+	if source := detailSource(entry); source != "" {
+		lines = appendDetailField(lines, "Source", source, width, labelStyle, detailStyle)
+	}
+	return lines
+}
+
+func (m PickerModel) detailMaximumOffset() int {
+	lines := m.detailBodyLines(m.contentWidth(), lipgloss.NewStyle(), lipgloss.NewStyle(), lipgloss.NewStyle())
+	return maxInt(0, len(lines)-maxInt(1, m.effectiveHeight()-1))
+}
+
+func detailCommandLines(command string, width int) []string {
+	if width < 1 {
+		width = 1
+	}
+	var lines []string
+	for _, rawLine := range strings.Split(command, "\n") {
+		runes := []rune(rawLine)
+		for len(runes) > width {
+			cut := width
+			for i := width - 1; i > 0; i-- {
+				if runes[i] == ' ' || runes[i] == '	' {
+					cut = i + 1
+					break
+				}
+			}
+			lines = append(lines, string(runes[:cut]))
+			runes = runes[cut:]
+		}
+		lines = append(lines, string(runes))
+	}
+	return lines
 }
 
 func appendDetailField(lines []string, label, value string, width int, labelStyle, valueStyle lipgloss.Style) []string {
