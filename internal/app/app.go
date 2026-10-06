@@ -2,6 +2,7 @@ package app
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,7 +21,7 @@ import (
 )
 
 var (
-	version     = "0.9.4"
+	version     = "0.9.5"
 	buildCommit = "unknown"
 )
 
@@ -34,7 +35,7 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 		case "config":
 			return runConfig(args[1:], stdout, stderr)
 		case "setup":
-			return runSetup(args[1:], stdout, stderr)
+			return runSetup(args[1:], stdin, stdout, stderr)
 		case "upgrade":
 			return runUpgrade(args[1:], stdout, stderr)
 		case "version", "--version", "-v":
@@ -602,7 +603,9 @@ func printConfig(stdout io.Writer) error {
 	return nil
 }
 
-func runSetup(args []string, stdout, stderr io.Writer) error {
+const defaultHostsRepo = "git@git.dawq.me:sergeyb/sshconfig.git"
+
+func runSetup(args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	force := fs.Bool("force", false, "replace existing non-git ~/.ssh/config.d/f_hosts after backup")
@@ -610,18 +613,18 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
-		return errors.New("usage: f setup REPO_URL")
-	}
-	repoURL := strings.TrimSpace(fs.Arg(0))
-	if repoURL == "" {
-		return errors.New("repo URL is required")
-	}
-	dir, err := sshConfigDir()
+	repoURL, err := setupRepoURL(fs.Args(), stdin, stdout)
 	if err != nil {
 		return err
 	}
-	if err := ensureSSHConfigInclude(); err != nil {
+	if accessErr := checkSetupRepoAccess(repoURL); accessErr != nil {
+		if helpErr := printSetupRepoAccessHelp(repoURL, accessErr, stdout); helpErr != nil {
+			return helpErr
+		}
+		return fmt.Errorf("repository access check failed for %s", safeRepoURL(repoURL))
+	}
+	dir, err := sshConfigDir()
+	if err != nil {
 		return err
 	}
 	if *adopt {
@@ -630,10 +633,22 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 		}
 	}
 	if root, ok := gitRoot(dir); ok {
+		originalOrigin := strings.TrimSpace(gitOutput(root, "remote", "get-url", "origin"))
+		if originalOrigin == "" {
+			return errors.New("existing hosts repository has no origin URL")
+		}
+		restoreOrigin := func() {
+			_ = runUpgradeGit(root, io.Discard, io.Discard, "remote", "set-url", "origin", originalOrigin)
+		}
 		if err := runUpgradeGit(root, stdout, stderr, "remote", "set-url", "origin", repoURL); err != nil {
 			return err
 		}
 		if err := runUpgradeGit(root, stdout, stderr, "pull", "--rebase", "--autostash"); err != nil {
+			restoreOrigin()
+			return err
+		}
+		if err := ensureSSHConfigInclude(); err != nil {
+			restoreOrigin()
 			return err
 		}
 		fmt.Fprintf(stdout, "synced hosts repo: %s\n", dir)
@@ -642,6 +657,9 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	if nonEmptyDir(dir) {
 		if *adopt {
 			if err := adoptHostsRepo(dir, repoURL, stdout, stderr); err != nil {
+				return err
+			}
+			if err := ensureSSHConfigInclude(); err != nil {
 				return err
 			}
 			fmt.Fprintf(stdout, "adopted current f_hosts SSH config repo: %s\n", dir)
@@ -655,6 +673,11 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 			return fmt.Errorf("backup existing f_hosts: %w", err)
 		}
 		fmt.Fprintf(stdout, "backed up existing f_hosts SSH config repo: %s\n", backup)
+		defer func() {
+			if _, err := os.Stat(dir); errors.Is(err, os.ErrNotExist) {
+				_ = os.Rename(backup, dir)
+			}
+		}()
 	}
 	if *adopt {
 		return fmt.Errorf("%s is empty; put *.conf files there first or keep legacy ~/.ssh/config.d/aoo.conf for automatic import", dir)
@@ -666,11 +689,196 @@ func runSetup(args []string, stdout, stderr io.Writer) error {
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
+		_ = os.RemoveAll(dir)
 		return fmt.Errorf("git clone hosts repo: %w", err)
 	}
 	_ = os.Chmod(dir, 0o700)
+	if err := ensureSSHConfigInclude(); err != nil {
+		_ = os.RemoveAll(dir)
+		return err
+	}
 	fmt.Fprintf(stdout, "installed hosts repo: %s\n", dir)
 	return nil
+}
+
+func setupRepoURL(args []string, stdin io.Reader, stdout io.Writer) (string, error) {
+	if len(args) > 1 {
+		return "", errors.New("usage: f setup [REPO_URL]")
+	}
+	if len(args) == 1 {
+		repoURL := strings.TrimSpace(args[0])
+		if repoURL == "" {
+			return "", errors.New("repo URL is required")
+		}
+		return repoURL, nil
+	}
+	fmt.Fprintf(stdout, "SSH inventory repository [%s]: ", defaultHostsRepo)
+	line, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	repoURL := strings.TrimSpace(line)
+	if repoURL == "" {
+		repoURL = defaultHostsRepo
+	}
+	return repoURL, nil
+}
+
+func checkSetupRepoAccess(repoURL string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	tempDir, err := os.MkdirTemp("", "f-setup-access-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if strings.TrimSpace(os.Getenv("GIT_SSH_COMMAND")) == "" {
+		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=8")
+	}
+	run := func(args ...string) error {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Stdin = nil
+		cmd.Stdout = io.Discard
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+		cmd.Env = env
+		if runErr := cmd.Run(); runErr != nil {
+			if ctx.Err() != nil {
+				return errors.New("repository access timed out")
+			}
+			message := strings.TrimSpace(stderr.String())
+			if message == "" {
+				return runErr
+			}
+			return errors.New(message)
+		}
+		return nil
+	}
+	if err := run("clone", "--quiet", "--no-checkout", repoURL, tempDir); err != nil {
+		return err
+	}
+	head := strings.TrimSpace(gitOutput(tempDir, "rev-parse", "--verify", "HEAD"))
+	if head == "" {
+		if err := runUpgradeGit(tempDir, io.Discard, io.Discard, "-c", "user.name=f", "-c", "user.email=f@local", "commit", "--allow-empty", "-m", "f setup access check"); err != nil {
+			return fmt.Errorf("prepare write-access check: %w", err)
+		}
+		return run("-C", tempDir, "push", "--dry-run", "origin", "HEAD:refs/heads/f-setup-access-check")
+	}
+	branch := strings.TrimSpace(gitOutput(tempDir, "symbolic-ref", "--quiet", "--short", "HEAD"))
+	if branch == "" || branch == "HEAD" {
+		return errors.New("cannot determine repository default branch for write-access check")
+	}
+	return run("-C", tempDir, "push", "--dry-run", "origin", "HEAD:refs/heads/"+branch)
+}
+
+func printSetupRepoAccessHelp(repoURL string, accessErr error, stdout io.Writer) error {
+	if strings.Contains(strings.ToLower(accessErr.Error()), "host key verification failed") {
+		fmt.Fprintf(stdout, "\nRepository access failed because SSH host key verification failed. Verify the server fingerprint, add the trusted host key to known_hosts, and rerun: f setup %s\n", safeRepoURL(repoURL))
+		return nil
+	}
+	lowerRepoURL := strings.ToLower(strings.TrimSpace(repoURL))
+	if strings.HasPrefix(lowerRepoURL, "https://") || strings.HasPrefix(lowerRepoURL, "http://") {
+		fmt.Fprintf(stdout, "\nRepository access failed: %v\nConfigure HTTPS credentials with read and write access for %s, then rerun: f setup %s\n", accessErr, safeRepoURL(repoURL), safeRepoURL(repoURL))
+		return nil
+	}
+	publicKey, publicKeyPath, err := ensureSetupPublicKey()
+	if err != nil {
+		return fmt.Errorf("repository access failed (%v); prepare an SSH key: %w", accessErr, err)
+	}
+	fmt.Fprintf(stdout, "\nRepository access failed: %v\n", accessErr)
+	fmt.Fprintf(stdout, "Add this public key to %s as a deploy key with read/write access:\n\n%s\n\n", safeRepoURL(repoURL), publicKey)
+	fmt.Fprintf(stdout, "Public key file: %s\nThen rerun: f setup %s\n", publicKeyPath, safeRepoURL(repoURL))
+	return nil
+}
+
+func ensureSetupPublicKey() (string, string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", "", err
+	}
+	sshDir := filepath.Join(home, ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		return "", "", err
+	}
+	privatePath := filepath.Join(sshDir, "id_ed25519")
+	publicPath := privatePath + ".pub"
+	_, statErr := os.Stat(privatePath)
+	if statErr == nil {
+		cmd := exec.Command("ssh-keygen", "-y", "-f", privatePath)
+		output, keyErr := cmd.Output()
+		if keyErr != nil {
+			return "", "", fmt.Errorf("derive %s: %w", publicPath, keyErr)
+		}
+		derivedKey := strings.TrimSpace(string(output))
+		if derivedKey == "" {
+			return "", "", errors.New("derived public key is empty")
+		}
+		existingKey := ""
+		if raw, readErr := os.ReadFile(publicPath); readErr == nil {
+			existingKey = strings.TrimSpace(string(raw))
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return "", "", readErr
+		}
+		if !sameSetupPublicKey(existingKey, derivedKey) {
+			if writeErr := writeSetupPublicKeyAtomic(publicPath, derivedKey); writeErr != nil {
+				return "", "", writeErr
+			}
+			existingKey = derivedKey
+		}
+		return existingKey, publicPath, nil
+	} else if errors.Is(statErr, os.ErrNotExist) {
+		if removeErr := os.Remove(publicPath); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+			return "", "", removeErr
+		}
+		cmd := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "f-hosts", "-f", privatePath)
+		if output, keyErr := cmd.CombinedOutput(); keyErr != nil {
+			return "", "", fmt.Errorf("ssh-keygen: %s", strings.TrimSpace(string(output)))
+		}
+	} else {
+		return "", "", statErr
+	}
+	raw, err := os.ReadFile(publicPath)
+	if err != nil {
+		return "", "", err
+	}
+	publicKey := strings.TrimSpace(string(raw))
+	if publicKey == "" {
+		return "", "", errors.New("generated public key is empty")
+	}
+	return publicKey, publicPath, nil
+}
+
+func sameSetupPublicKey(left, right string) bool {
+	leftFields := strings.Fields(left)
+	rightFields := strings.Fields(right)
+	return len(leftFields) >= 2 && len(rightFields) >= 2 && leftFields[0] == rightFields[0] && leftFields[1] == rightFields[1]
+}
+
+func writeSetupPublicKeyAtomic(path, publicKey string) error {
+	temp, err := os.CreateTemp(filepath.Dir(path), ".id_ed25519.pub-*")
+	if err != nil {
+		return err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Chmod(0o644); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if _, err := io.WriteString(temp, publicKey+"\n"); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		_ = temp.Close()
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tempPath, path)
 }
 
 func seedFHostsDirForAdopt(dir string, stdout io.Writer) error {
@@ -885,7 +1093,7 @@ Usage:
   %s config height N    set compact picker height (minimum 6)
   %s config address on|off
                          set show_address in the config file
-  %s setup REPO         clone/sync SSH hosts repo into ~/.ssh/config.d/f_hosts
+  %s setup [REPO]       verify access and clone/sync SSH hosts repo
   %s setup --adopt REPO adopt current ~/.ssh/config.d/f_hosts as hosts repo
 
 Add options:

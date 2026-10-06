@@ -555,13 +555,13 @@ func (m PickerModel) maxVisibleItems() int {
 	return maxItems
 }
 
+func pickerProgramOptions(_ Options) []tea.ProgramOption {
+	return []tea.ProgramOption{tea.WithAltScreen()}
+}
+
 func RunPicker(entries []notes.Entry, initialQuery string, options Options) (*notes.Entry, int, string, bool, bool, bool, string, error) {
 	model := NewPicker(entries, initialQuery, DefaultTheme(), options)
-	programOptions := []tea.ProgramOption{}
-	if options.FullScreen {
-		programOptions = append(programOptions, tea.WithAltScreen())
-	}
-	program := tea.NewProgram(model, programOptions...)
+	program := tea.NewProgram(model, pickerProgramOptions(options)...)
 	result, err := program.Run()
 	if err != nil {
 		return nil, 0, initialQuery, false, false, false, "", fmt.Errorf("picker: %w", err)

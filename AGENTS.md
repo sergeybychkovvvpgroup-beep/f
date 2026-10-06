@@ -36,8 +36,8 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
 - `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. Do not revive legacy `two_line_results`; `show_address` is its narrow supported replacement.
 - Both modes use the same flat, pink-accented, preview-free interface with an active-category badge and Bubbles `textinput`/`spinner` components. Compact mode stays near the left edge, is capped at 96 terminal cells, and shrinks vertically to the filtered result count up to `picker_height`; full-screen keeps the configured terminal height.
-- `compact` stays in the normal terminal buffer and supports `layout: top | bottom`, changed by `f config layout top|bottom`.
-- `full-screen` uses the alternate screen and always renders from the top.
+- Both `compact` and `full-screen` use the alternate screen so every exit path restores the previous terminal contents without leaving picker rows behind. Bubble Tea must restore the screen before command/editor handoff.
+- `compact` supports `layout: top | bottom`, changed by `f config layout top|bottom`; `full-screen` always renders from the top.
 - Keep the flat terminal-native layout; do not add an outer frame, mode tabs, split panes, preview panels, or a separate help footer.
 - Use the fixed modern fzf-like palette in `internal/ui/theme.go`: pink prompt and match accents, muted status/address text, and a slim pink selection marker.
 - Avoid forced full background fill; transparent terminals made ANSI background painting fragile. Keep the text-input cursor hidden to prevent a reverse-video block artifact.
@@ -132,6 +132,8 @@ New custom hosts are written back to ordinary OpenSSH config blocks in:
 Legacy YAML files may still be read for compatibility, but they are not the write path for new additions.
 
 If `~/.ssh/config.d/f_hosts` is a git repository, host sync should behave like nb notes: pull before reading/writing where practical, then commit and push after host edits.
+
+Fresh-machine setup is interactive when no URL is supplied: `f setup` prompts with `git@git.dawq.me:sergeyb/sshconfig.git` as the default, verifies clone plus a dry-run push before modifying SSH config, and prints `~/.ssh/id_ed25519.pub` when repository access is missing. Never print or copy the private key. The public install command is `curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh`; Debian/Ubuntu uses the latest release `.deb`, with a user-local release archive fallback when root or `sudo` is unavailable.
 
 ## Build, test, install
 

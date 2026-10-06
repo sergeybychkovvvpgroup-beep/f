@@ -1,57 +1,87 @@
 #!/usr/bin/env sh
 set -eu
 
-REPO_URL="${F_REPO_URL:-https://github.com/sergeybychkovvvpgroup-beep/f.git}"
-RAW_BASE="${F_RAW_BASE:-https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main}"
+REPO="${F_GITHUB_REPO:-sergeybychkovvvpgroup-beep/f}"
+API_URL="https://api.github.com/repos/$REPO/releases/latest"
 BIN_DIR="${F_BIN_DIR:-$HOME/.local/bin}"
-CACHE_DIR="${F_CACHE_DIR:-$HOME/.cache/f/source}"
-BIN="$BIN_DIR/f"
-
-mkdir -p "$BIN_DIR"
 
 need() {
   command -v "$1" >/dev/null 2>&1
 }
 
-if need curl; then
-  tmp="$(mktemp)"
-  arch="$(uname -m)"
-  case "$arch" in
-    x86_64|amd64) asset="f-linux-amd64" ;;
-    aarch64|arm64) asset="f-linux-arm64" ;;
-    *) asset="" ;;
-  esac
-  if [ -n "$asset" ] && curl -fsSL "$RAW_BASE/dist/$asset" -o "$tmp" 2>/dev/null; then
-    install -m 0755 "$tmp" "$BIN"
+if ! need curl; then
+  echo "error: curl is required" >&2
+  exit 1
+fi
 
-    rm -f "$tmp"
-    echo "installed: $BIN"
-    echo "next: f setup <hosts-repo-url>"
-    exit 0
+case "$(uname -m)" in
+  x86_64|amd64) arch="amd64" ;;
+  aarch64|arm64) arch="arm64" ;;
+  *)
+    echo "error: unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+release_json="$(curl -fsSL "$API_URL")"
+tag="$(printf '%s\n' "$release_json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed -n '1p')"
+if [ -z "$tag" ]; then
+  echo "error: cannot determine latest release tag" >&2
+  exit 1
+fi
+version="${tag#v}"
+base="https://github.com/$REPO/releases/download/$tag"
+tmpdir="$(mktemp -d)"
+trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
+
+install_deb() {
+  deb="$tmpdir/f.deb"
+  url="$base/f_${version}_linux_${arch}.deb"
+  echo "downloading: $url"
+  curl -fsSL "$url" -o "$deb"
+  if [ "$(id -u)" -eq 0 ]; then
+    if dpkg -i "$deb"; then
+      echo "installed: /usr/bin/f"
+      return 0
+    fi
+  elif need sudo; then
+    if sudo dpkg -i "$deb"; then
+      echo "installed: /usr/bin/f"
+      return 0
+    fi
   fi
-  rm -f "$tmp"
-fi
+  return 1
+}
 
-if ! need git; then
-  echo "error: git is required for source install" >&2
-  exit 1
-fi
-if ! need go; then
-  echo "error: Go is required for source install (or publish dist/f-linux-* for binary install)" >&2
-  exit 1
-fi
+install_user_binary() {
+  archive="$tmpdir/f.tar.gz"
+  extract="$tmpdir/extract"
+  url="$base/f_${version}_linux_${arch}.tar.gz"
+  echo "downloading: $url"
+  curl -fsSL "$url" -o "$archive"
+  mkdir -p "$extract" "$BIN_DIR"
+  tar -xzf "$archive" -C "$extract"
+  binary="$(find "$extract" -type f -name f -print | sed -n '1p')"
+  if [ -z "$binary" ]; then
+    echo "error: release archive does not contain f" >&2
+    exit 1
+  fi
+  install -m 0755 "$binary" "$BIN_DIR/f"
+  echo "installed: $BIN_DIR/f"
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *) echo "add to PATH: export PATH=\"$BIN_DIR:\$PATH\"" ;;
+  esac
+}
 
-if [ -d "$CACHE_DIR/.git" ]; then
-  git -C "$CACHE_DIR" remote set-url origin "$REPO_URL"
-  git -C "$CACHE_DIR" pull --ff-only
+if need dpkg && { [ "$(id -u)" -eq 0 ] || need sudo; } && install_deb; then
+  :
 else
-  rm -rf "$CACHE_DIR"
-  mkdir -p "$(dirname "$CACHE_DIR")"
-  git clone --depth 1 "$REPO_URL" "$CACHE_DIR"
+  install_user_binary
 fi
 
-(cd "$CACHE_DIR" && commit="$(git rev-parse HEAD)" && go build -buildvcs=false -ldflags "-X f/internal/app.buildCommit=$commit" -o "$BIN" ./cmd/f)
+if command -v f >/dev/null 2>&1; then
+  f version
+fi
 
-echo "installed: $BIN"
-echo "ensure PATH contains: $BIN_DIR"
-echo "next: f setup <hosts-repo-url>"
+echo "next: f setup"

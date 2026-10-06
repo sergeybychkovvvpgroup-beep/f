@@ -10,6 +10,8 @@ builds:
   - id: f
     main: ./cmd/f
     binary: f
+    ldflags:
+      - -s -w -X f/internal/app.buildCommit={{ .FullCommit }}
     env:
       - CGO_ENABLED=0
     goos:

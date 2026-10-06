@@ -12,6 +12,12 @@ import (
 	"github.com/muesli/termenv"
 )
 
+func TestCompactPickerUsesAlternateScreenToRestoreTerminalOnExit(t *testing.T) {
+	if got := len(pickerProgramOptions(Options{FullScreen: false})); got == 0 {
+		t.Fatal("compact picker must use the alternate screen so its UI disappears on exit")
+	}
+}
+
 func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	m := PickerModel{}
 	if got := m.resultRowHeight(); got != 1 {

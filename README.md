@@ -6,7 +6,7 @@ It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list,
 
 ## Interface
 
-Both sizes use a flat interface without an outer frame or background container. In compact mode it stays near the left edge with a small margin, remains width-capped, and uses exactly as many rows as the current results need. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
+Both sizes use a flat interface without an outer frame or background container. In compact mode it stays near the left edge with a small margin, remains width-capped, and uses exactly as many rows as the current results need. The picker always uses the terminal's alternate screen, so quitting restores the previous shell screen instead of leaving UI rows behind. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
@@ -20,7 +20,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 Choose the size:
 
 ```bash
-f config ui compact      # compact picker in the current terminal
+f config ui compact      # compact picker; terminal content is restored on exit
 f config ui full-screen  # the same picker using the full screen
 ```
 
@@ -60,10 +60,12 @@ Legacy config values migrate automatically: `light` → `compact`, `full` → `f
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sergeybychkovvvpgroup-beep/f/main/install.sh | sh
-f setup <ssh-config-repo-url>
+f setup
 ```
 
-The installer adds the `f` binary. `f setup` clones the hosts repository into `~/.ssh/config.d/f_hosts` and ensures `~/.ssh/config` includes `~/.ssh/config.d/f_hosts/*.conf`.
+The installer downloads the latest public GitHub release. On Debian/Ubuntu it installs the release `.deb` through `dpkg`; without root or `sudo`, it installs the release binary into `~/.local/bin/f`.
+
+`f setup` asks for the SSH inventory repository, defaulting to `git@git.dawq.me:sergeyb/sshconfig.git`. It verifies both clone and dry-run push access before changing SSH config, using normal SSH host-key verification. For an SSH authentication failure, it creates or reuses `~/.ssh/id_ed25519`, derives and validates the matching public key, prints only that public key for a read/write deploy key, and tells you to rerun `f setup`. Host-key failures require verifying the server fingerprint and updating `known_hosts`; HTTPS failures require HTTPS credentials with write access.
 
 The built-in update checker uses the public GitHub repository by default. Override it temporarily with `F_UPGRADE_REPO` when needed.
 
@@ -88,6 +90,7 @@ f config layout bottom  # compact at bottom
 f config layout top     # compact at top
 f config height 20      # compact picker height (minimum 6)
 f config address on     # name · user@host:port
+f setup                 # interactive repository setup and access check
 ```
 
 The settings are stored in `~/.config/f/config.yaml` (or the path printed by `f config`). The address command changes the YAML key `show_address`; every modifying config command prints the changed key and the exact file path.

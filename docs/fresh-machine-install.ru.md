@@ -28,10 +28,16 @@ f version
 ## Подключение репозитория хостов
 
 ```bash
-f setup <ssh-config-repo-url>
+f setup
 ```
 
-Команда добавит OpenSSH include и клонирует репозиторий в `~/.ssh/config.d/f_hosts`.
+Команда предложит репозиторий `git@git.dawq.me:sergeyb/sshconfig.git` по умолчанию, проверит clone и dry-run push, затем добавит OpenSSH include и клонирует репозиторий в `~/.ssh/config.d/f_hosts`.
+
+При ошибке SSH-аутентификации `f setup` напечатает только проверенный публичный SSH-ключ. Добавь его в права репозитория как deploy key с доступом на запись и повтори. Команда не отключает проверку host key: при ошибке host-key verification сначала проверь fingerprint сервера и обнови `known_hosts`. Для HTTPS URL настрой HTTPS credentials с правом записи.
+
+```bash
+f setup
+```
 
 Чтобы опубликовать уже подготовленные `.conf`-файлы:
 
