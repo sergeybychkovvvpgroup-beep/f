@@ -30,15 +30,16 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
+- `show_address: true | false` is persisted in the same file; `f config address on|off` toggles a muted `user@host:port` row beneath each name.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
-- `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. The picker always shows its single-line result list.
-- Both modes use the same rounded, pink-accented application card with title, active-category badge, tabless preview-free results, and Bubbles `textinput`/`spinner` components. Compact mode is centered, capped at 100 terminal cells, and shrinks vertically to the filtered result count up to `picker_height`; full-screen keeps the configured terminal height.
+- `focus_mode`, `show_list_on_start`, `two_line_results`, `show_match_context`, and `full_screen` are obsolete and must be removed when rewriting config. Do not revive legacy `two_line_results`; `show_address` is its narrow supported replacement.
+- Both modes use the same flat, pink-accented, preview-free interface with an active-category badge and Bubbles `textinput`/`spinner` components. Compact mode stays near the left edge, is capped at 96 terminal cells, and shrinks vertically to the filtered result count up to `picker_height`; full-screen keeps the configured terminal height.
 - `compact` stays in the normal terminal buffer and supports `layout: top | bottom`, changed by `f config layout top|bottom`.
 - `full-screen` uses the alternate screen and always renders from the top.
-- Keep the rounded application frame; do not add mode tabs, split panes, preview panels, or a separate help footer.
-- Use the fixed modern fzf-like palette in `internal/ui/theme.go`: pink prompt and match accents, muted status text, and a dark selected-row background.
-- Avoid forced full background fill outside the selected row; transparent terminals made ANSI background painting fragile.
+- Keep the flat terminal-native layout; do not add an outer frame, mode tabs, split panes, preview panels, or a separate help footer.
+- Use the fixed modern fzf-like palette in `internal/ui/theme.go`: pink prompt and match accents, muted status/address text, and a slim pink selection marker.
+- Avoid forced full background fill; transparent terminals made ANSI background painting fragile. Keep the text-input cursor hidden to prevent a reverse-video block artifact.
 - Tags are currently intentionally hidden from UI.
 
 ## Search and hotkeys
