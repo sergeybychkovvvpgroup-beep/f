@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line results by default, or an optional muted `└ user@host:port` address below each name;
+- single-line results by default, or an optional plain muted `user@host:port` address below each name;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - `Tab` detail view with the complete command, address, mode, description, and source location;

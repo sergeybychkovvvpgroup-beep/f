@@ -410,12 +410,18 @@ func (m PickerModel) renderHeader(width int) string {
 		Bold(true).
 		Padding(0, 1).
 		Render(label)
+	metaText := fmt.Sprintf("  %d", len(m.matches))
+	if len(m.matches) != len(m.allEntries) {
+		metaText = fmt.Sprintf("  %d / %d", len(m.matches), len(m.allEntries))
+	}
 	meta := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(m.theme.TitleDimFG)).
-		Render(fmt.Sprintf("  %d / %d", len(m.matches), len(m.allEntries)))
+		Render(metaText)
 	left := badge + meta
-	if sync := m.renderSyncStatus(); sync != "" {
-		left += lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG)).Render("  ·  ") + sync
+	if m.syncStatus.State != SyncStateOK {
+		if sync := m.renderSyncStatus(); sync != "" {
+			left += lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.TitleDimFG)).Render("  ·  ") + sync
+		}
 	}
 	return truncateRunes(left, width)
 }
@@ -689,25 +695,7 @@ func (m PickerModel) statusLine() string {
 }
 
 func (m PickerModel) renderStatusBar(baseStyle lipgloss.Style) string {
-	items := []struct {
-		key, label, kind string
-	}{
-		{"F1", "all", "all"},
-		{"F2", "hosts", "host"},
-		{"F3", "commands", "cmd"},
-		{"F4", "forwards", "fwd"},
-		{"F5", "jumps", "jump"},
-	}
-	parts := make([]string, 0, len(items))
-	for _, item := range items {
-		style := baseStyle
-		if m.activeKind == item.kind || (m.activeKind == "" && item.kind == "all") {
-			style = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-		}
-		parts = append(parts, style.Render(item.key+" "+item.label))
-	}
-	parts = append(parts, baseStyle.Render("Tab details"))
-	return strings.Join(parts, baseStyle.Render("  •  "))
+	return baseStyle.Render("F1–F5 categories  •  Tab details")
 }
 
 func (m PickerModel) renderSyncStatus() string {
@@ -972,7 +960,7 @@ func (m PickerModel) addressLine(address string, width int, detailStyle lipgloss
 	address = truncateRunes(address, maxInt(0, width-4))
 	query := strings.TrimSpace(m.input.Value())
 	matchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-	return detailStyle.Render("  └ ") + renderFuzzyText(address, query, detailStyle, matchStyle)
+	return detailStyle.Render("    ") + renderFuzzyText(address, query, detailStyle, matchStyle)
 }
 
 func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, width int, selected bool, rowStyle, selectedStyle, detailStyle lipgloss.Style) string {

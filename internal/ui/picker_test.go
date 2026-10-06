@@ -19,7 +19,7 @@ func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	}
 }
 
-func TestPickerShowsMutedAddressBelowNameWhenEnabled(t *testing.T) {
+func TestPickerShowsPlainMutedAddressBelowNameWhenEnabled(t *testing.T) {
 	entry := notes.Entry{
 		Desc:    "gateway",
 		Address: "operator@192.0.2.10:2222",
@@ -35,13 +35,16 @@ func TestPickerShowsMutedAddressBelowNameWhenEnabled(t *testing.T) {
 	lines := strings.Split(plain, "\n")
 	found := false
 	for i := 0; i+1 < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "│ gateway" && strings.TrimSpace(lines[i+1]) == "└ operator@192.0.2.10:2222" {
+		if strings.TrimSpace(lines[i]) == "│ gateway" && strings.TrimSpace(lines[i+1]) == "operator@192.0.2.10:2222" {
 			found = true
 			break
 		}
 	}
 	if !found {
 		t.Fatalf("address is not rendered below the name: %q", plain)
+	}
+	if strings.Contains(plain, "└") {
+		t.Fatalf("address row still contains a noisy tree marker: %q", plain)
 	}
 }
 
@@ -84,7 +87,7 @@ func TestAddressModeFitsMinimumPickerHeight(t *testing.T) {
 	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 6, ShowAddress: true})
 	m.width, m.height = 100, 6
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "operator@192.0.2.1") || !strings.Contains(plain, "F1 all") || strings.Contains(plain, "…") {
+	if !strings.Contains(plain, "operator@192.0.2.1") || !strings.Contains(plain, "F1–F5 categories") || strings.Contains(plain, "…") {
 		t.Fatalf("minimum-height address mode is clipped: %q", plain)
 	}
 }
@@ -169,7 +172,7 @@ func TestPickerViewUsesMinimalBubbleTeaPanel(t *testing.T) {
 	m.width = 100
 	m.height = 8
 	view := stripANSI(m.View())
-	for _, required := range []string{"SSH", "F1 all"} {
+	for _, required := range []string{"SSH", "F1–F5 categories"} {
 		if !strings.Contains(view, required) {
 			t.Fatalf("minimal panel is missing %q: %q", required, view)
 		}
@@ -179,7 +182,7 @@ func TestPickerViewUsesMinimalBubbleTeaPanel(t *testing.T) {
 			t.Fatalf("minimal panel contains obsolete chrome %q: %q", forbidden, view)
 		}
 	}
-	if !strings.Contains(view, "> prod") || !strings.Contains(view, "all") {
+	if !strings.Contains(view, "> prod") || !strings.Contains(view, "categories") {
 		t.Fatalf("minimal panel is missing query or compact status: %q", view)
 	}
 }
@@ -464,17 +467,36 @@ func TestFunctionKeysFilterCategoriesWithoutChangingQuery(t *testing.T) {
 	}
 }
 
-func TestPickerStatusShowsFunctionKeyCategoryLegend(t *testing.T) {
+func TestPickerStatusUsesCompactCategoryHint(t *testing.T) {
 	m := NewPicker(nil, "", DefaultTheme(), Options{Height: 8})
 	m.width, m.height = 100, 8
 	plain := stripANSI(m.View())
-	for _, item := range []string{"F1 all", "F2 hosts", "F3 commands", "F4 forwards", "F5 jumps"} {
+	for _, item := range []string{"F1–F5 categories", "Tab details"} {
 		if !strings.Contains(plain, item) {
-			t.Fatalf("category legend is missing %q: %q", item, plain)
+			t.Fatalf("compact status is missing %q: %q", item, plain)
+		}
+	}
+	for _, noisy := range []string{"F1 all", "F2 hosts", "F3 commands", "F4 forwards", "F5 jumps"} {
+		if strings.Contains(plain, noisy) {
+			t.Fatalf("compact status still contains expanded hint %q: %q", noisy, plain)
 		}
 	}
 	if got := len(strings.Split(plain, "\n")); got != 4 {
 		t.Fatalf("empty compact picker has %d lines, want 4 without filler", got)
+	}
+}
+
+func TestPickerHeaderHidesRedundantAllCountAndHealthySync(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "one", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Actions: []notes.Action{{Cmd: "ssh two"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 8, InitialSync: SyncStatus{State: SyncStateOK}})
+	m.width, m.height = 100, 8
+	header := strings.Split(stripANSI(m.View()), "\n")[0]
+	fields := strings.Fields(header)
+	if len(fields) < 2 || fields[0] != "SSH" || fields[1] != "2" || strings.Contains(header, "2 / 2") || strings.Contains(header, "sync ok") {
+		t.Fatalf("header still contains redundant healthy-state metadata: %q", header)
 	}
 }
 
