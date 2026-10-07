@@ -30,7 +30,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
-- `show_address: true | false` is the compatibility name persisted in the same file; `f config address on|off` toggles the selected-only composed-command preview. Ordinary rows show only complete entry names and never show the old `user@host` target preview. Entry names are never truncated: wrap long names on explicit display-cell-safe lines and count those physical lines in the viewport budget. Show the selected command completely when it fits; in a smaller viewport, keep output within `picker_height`, mark the omitted middle with `…`, and preserve the final target. `Tab` provides the complete source-style block.
+- `show_address: true | false` is the compatibility name persisted in the same file; `f config address on|off` toggles a fixed two-line command block at the bottom of the picker. Ordinary rows show only complete entry names and never show the old `user@host` target preview. Entry names are never truncated: wrap long names on explicit display-cell-safe lines and count those physical lines in the viewport budget. Moving the selection must never change row heights or the command block position. Show the selected command on one line with display-width-safe middle omission when required, preserving the target tail. `Tab` provides the complete source-style block.
 - `f config` and `f config show` print the current UI settings, exact config file, SSH inventory paths, and available setters. Every setter prints the persisted YAML key and config path; `f config height N` sets `picker_height` with a minimum of 6.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
@@ -38,7 +38,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 - Both modes use the same flat, pink-accented, preview-free interface with an active-category badge and Bubbles `textinput`/`spinner` components. Compact mode stays near the left edge, is capped at 96 terminal cells, and shrinks vertically to the filtered result count up to `picker_height`; full-screen keeps the configured terminal height.
 - Both `compact` and `full-screen` use the alternate screen so every exit path restores the previous terminal contents without leaving picker rows behind. Bubble Tea must restore the screen before command/editor handoff.
 - `compact` supports `layout: top | bottom`, changed by `f config layout top|bottom`; `full-screen` always renders from the top.
-- Keep the flat terminal-native layout; do not add an outer frame, mode tabs, split panes, preview panels, or a separate help footer.
+- Keep the flat terminal-native layout; the fixed lower command block is the only preview area. Do not add an outer frame, mode tabs, split panes, floating cards, or a separate help footer.
 - Use the fixed modern fzf-like palette in `internal/ui/theme.go`: pink prompt and match accents, muted status/address text, and a slim pink selection marker.
 - Avoid forced full background fill; transparent terminals made ANSI background painting fragile. Keep the text-input cursor hidden to prevent a reverse-video block artifact.
 - Tags are currently intentionally hidden from UI.
@@ -103,7 +103,7 @@ Entries retain internal classification for display and preview metadata, but cla
 - `RemoteCommand` -> commands;
 - `ProxyJump`, `ProxyCommand` -> jumps.
 
-Expanded command generation must preserve every directive in the selected concrete `Host` block. Render `HostName`/`User` as the target and every other directive in source order as shell-safe `-o Key=Value`. Execution still uses the alias. Ordinary rows show only the full entry name, using explicit display-cell-aware wrapping when needed. The selected row alone adds the composed command below; show it fully when the viewport permits, otherwise use a bounded preview with an explicit `…` omission marker and preserve the final target. `Tab` and `Ctrl+Y` use the complete source-style `Host` block.
+Expanded command generation must preserve every directive in the selected concrete `Host` block. Render `HostName`/`User` as the target and every other directive in source order as shell-safe `-o Key=Value`. Execution still uses the alias. Ordinary rows show only the full entry name, using explicit display-cell-aware wrapping when needed. The selected command is rendered only in the fixed two-line lower block; if it does not fit on one line, use a display-width-safe middle `…` and retain the target tail. `Tab` and `Ctrl+Y` use the complete source-style `Host` block.
 
 ## Host storage and sync
 

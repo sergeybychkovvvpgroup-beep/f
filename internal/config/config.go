@@ -338,7 +338,7 @@ func renderConfig(cfg File) string {
 		"# hosts are stored as OpenSSH config in ~/.ssh/config.d/f_hosts/*.conf",
 		"# ui_mode: compact | full-screen (both use the same frameless fzf-style UI)",
 		"# layout: top | bottom (compact mode only)",
-		"# show_address: show the composed command only below the selected name (legacy key name)",
+		"# show_address: show a fixed lower command block for the selected entry (legacy key name)",
 		"ui_mode: " + yamlScalar(cfg.UIMode),
 		"layout: " + yamlScalar(cfg.Layout),
 		"picker_height: " + strconv.Itoa(cfg.PickerHeight),

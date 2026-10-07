@@ -259,6 +259,7 @@ func (m PickerModel) View() string {
 		Width(contentWidth).
 		Render(truncateRunes(input.View(), contentWidth))
 	statusLine := truncateRunes(m.renderStatusBar(statusStyle), contentWidth)
+	commandBlock := m.renderCommandBlock(contentWidth, statusStyle, detailStyle)
 	body := []string{}
 	if m.shouldRenderResults() {
 		body = m.resultLines(contentWidth, rowStyle, selectedStyle, detailStyle)
@@ -266,22 +267,29 @@ func (m PickerModel) View() string {
 		if len(body) > limit {
 			body = body[:limit]
 		}
+		if len(commandBlock) > 0 && !m.options.FullScreen {
+			for len(body) < limit {
+				body = append(body, "")
+			}
+		}
 	}
 
 	lines := []string{m.renderHeader(contentWidth)}
 	if m.isBottomLayout() && !m.options.FullScreen {
 		lines = append(lines, body...)
-		lines = append(lines, inputLine, statusLine)
+		lines = append(lines, inputLine)
 	} else {
 		lines = append(lines, inputLine)
 		lines = append(lines, body...)
-		lines = append(lines, statusLine)
 	}
 	if m.options.FullScreen {
-		for len(lines) < m.effectiveHeight() {
+		reserved := len(commandBlock) + 1
+		for len(lines)+reserved < m.effectiveHeight() {
 			lines = append(lines, "")
 		}
 	}
+	lines = append(lines, commandBlock...)
+	lines = append(lines, statusLine)
 	content := strings.Join(clipLines(lines, m.effectiveHeight()), "\n")
 	return lipgloss.NewStyle().MarginLeft(2).Render(content)
 }
@@ -545,17 +553,11 @@ func (m PickerModel) maxVisibleItems() int {
 	if available < 1 {
 		available = 1
 	}
-	if m.options.ShowAddress && len(m.matches) > 0 && m.cursor >= 0 && m.cursor < len(m.matches) {
-		available -= len(selectedCommandLines(m.matches[m.cursor].Entry.Command, m.contentWidth()))
-		if available < 1 {
-			available = 1
-		}
-	}
 	return available
 }
 
 func (m PickerModel) maxResultLines() int {
-	available := m.viewHeight() - 3
+	available := m.viewHeight() - 3 - m.commandBlockHeight()
 	if available < 1 {
 		return 1
 	}
@@ -652,11 +654,7 @@ func (m PickerModel) viewHeight() int {
 	if resultLines == 0 {
 		resultLines = 1
 	}
-	extra := 0
-	if m.options.ShowAddress && len(m.matches) > 0 && m.cursor >= 0 && m.cursor < len(m.matches) {
-		extra = len(selectedCommandLines(m.matches[m.cursor].Entry.Command, m.contentWidth()))
-	}
-	desired := resultLines + extra + 3
+	desired := resultLines + m.commandBlockHeight() + 3
 	if desired < 8 {
 		desired = 8
 	}
@@ -1000,14 +998,7 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		entry := match.Entry
 		selected := index == m.cursor
 		rowLines := m.renderMatchLabelLines(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)
-		if selected && m.options.ShowAddress {
-			commandLines := fitSelectedCommandLines(entry.Command, selectedCommandLines(entry.Command, width), maxInt(0, budget-1), maxInt(8, width-2))
-			labelBudget := maxInt(1, budget-len(commandLines))
-			rowLines = fitSelectedLabelLines(rowLines, "", width, labelBudget, detailStyle)
-			for _, commandLine := range commandLines {
-				rowLines = append(rowLines, detailStyle.Render("  "+commandLine))
-			}
-		} else if selected {
+		if selected {
 			rowLines = fitSelectedLabelLines(rowLines, "", width, budget, detailStyle)
 		}
 		rows = append(rows, renderedRow{lines: rowLines})
@@ -1048,6 +1039,30 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		}
 	}
 	return lines
+}
+
+func (m PickerModel) commandBlockHeight() int {
+	if !m.options.ShowAddress {
+		return 0
+	}
+	return 2
+}
+
+func (m PickerModel) renderCommandBlock(width int, labelStyle, commandStyle lipgloss.Style) []string {
+	if m.commandBlockHeight() == 0 {
+		return nil
+	}
+	command := "—"
+	if len(m.matches) > 0 && m.cursor >= 0 && m.cursor < len(m.matches) {
+		if selected := strings.TrimSpace(m.matches[m.cursor].Entry.Command); selected != "" {
+			command = strings.Join(strings.Fields(selected), " ")
+		}
+	}
+	commandWidth := maxInt(1, width-2)
+	return []string{
+		labelStyle.Render("command"),
+		commandStyle.Render("  " + truncateMiddleRunes(command, commandWidth)),
+	}
 }
 
 func fitSelectedLabelLines(lines []string, target string, width, budget int, detailStyle lipgloss.Style) []string {

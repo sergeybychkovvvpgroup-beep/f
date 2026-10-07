@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- ordinary results show only the complete entry name; the selected result alone adds the composed command below, preserving the full command when it fits and showing an explicit middle omission while retaining the final target in unusually small viewports; `Tab` shows the complete source-style block; entry names are never shortened;
+- ordinary results show only the complete entry name; the selected entry's composed command appears in a fixed two-line lower block, so moving the cursor never changes row heights; long commands use an explicit middle omission while retaining the target tail, and `Tab` shows the complete source-style block; entry names are never shortened;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - `Tab` detail view for imported SSH entries shows the concrete OpenSSH block (`Host` plus every directive) without duplicate service metadata; `Ctrl+Y` prints that same block to the terminal; non-SSH command entries retain their command details;
@@ -31,11 +31,11 @@ f config layout bottom
 f config layout top
 ```
 
-Show the full composed command only below the selected entry (the legacy `address` setting name remains for compatibility):
+Show the selected entry's composed command in a fixed lower block (the legacy `address` setting name remains for compatibility):
 
 ```bash
 f config address on
-f config address off     # hide inline commands
+f config address off     # hide the fixed command block
 ```
 
 Legacy config values migrate automatically: `light` → `compact`, `full` → `full-screen`.
@@ -48,7 +48,7 @@ Legacy config values migrate automatically: `light` → `compact`, `full` → `f
 
 ![Compact picker at the top](docs/screenshots/compact-top.png)
 
-### Compact, top with inline commands
+### Compact, top with fixed command block
 
 ![Compact picker with composed SSH commands](docs/screenshots/compact-top-address.png)
 
@@ -89,7 +89,7 @@ f config ui full-screen # full-screen UI
 f config layout bottom  # compact at bottom
 f config layout top     # compact at top
 f config height 20      # compact picker height (minimum 6)
-f config address on     # selected command below; ordinary rows remain name-only
+f config address on     # fixed lower command block; result rows remain name-only
 f setup                 # interactive repository setup and access check
 ```
 

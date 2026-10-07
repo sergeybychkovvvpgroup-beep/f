@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 from pathlib import Path
-import textwrap
 from PIL import Image, ImageDraw, ImageFont
 
 OUT = Path(__file__).resolve().parent
@@ -29,29 +28,43 @@ def draw_rows(draw, x, y, rows, selected):
         draw.text((x, y), marker, fill=PINK if i == selected else FG, font=FONT)
         draw.text((x + 22, y), name_text, fill=MATCH if i == selected else FG, font=BOLD if i == selected else FONT)
         y += LINE
-        if i == selected and command:
-            for command_line in textwrap.wrap(command, width=82, break_long_words=False, break_on_hyphens=False):
-                draw.text((x + 44, y), command_line, fill=MUTED, font=FONT)
-                y += LINE
     return y
 
 
-def save(name, size, title, header, query, rows, selected=0, bottom=False):
+def middle_ellipsis(text, width=82):
+    if len(text) <= width:
+        return text
+    suffix = min(28, (width - 1) // 3)
+    return text[: width - suffix - 1] + "…" + text[-suffix:]
+
+
+def draw_command_block(draw, x, y, command):
+    draw.text((x, y), "command", fill=MUTED, font=FONT)
+    draw.text((x + 22, y + LINE), middle_ellipsis(command), fill=MUTED, font=FONT)
+    return y + 2 * LINE
+
+
+def save(name, size, title, header, query, rows, selected=0, bottom=False, full=False):
     image = Image.new("RGB", size, BG)
     draw = ImageDraw.Draw(image)
     draw.text((24, 15), title, fill=PINK, font=TITLE)
     x = 46
     top = 62
     footer = "Ctrl+E edit  •  Tab details  •  F1–F5 categories"
+    command = rows[selected][2] if 0 <= selected < len(rows) else "—"
     if bottom:
         draw.text((x, top), header, fill=FG, font=FONT)
         y = draw_rows(draw, x, top + LINE, rows, selected)
         draw.text((x, y + 2), "> " + query, fill=FG, font=FONT)
-        draw.text((x, y + LINE + 2), footer, fill=MUTED, font=FONT)
+        y = draw_command_block(draw, x, y + LINE + 2, command)
+        draw.text((x, y + 2), footer, fill=MUTED, font=FONT)
     else:
         draw.text((x, top), header, fill=FG, font=FONT)
         draw.text((x, top + LINE), "> " + query, fill=FG, font=FONT)
         y = draw_rows(draw, x, top + 2 * LINE, rows, selected)
+        if full:
+            y = size[1] - 3 * LINE - 18
+        y = draw_command_block(draw, x, y + 2, command)
         draw.text((x, y + 2), footer, fill=MUTED, font=FONT)
     image.save(OUT / name, optimize=True)
 
@@ -88,4 +101,5 @@ save(
         ("site-router [overlay]", "admin@198.51.100.40", "ssh admin@198.51.100.40"),
     ],
     selected=0,
+    full=True,
 )

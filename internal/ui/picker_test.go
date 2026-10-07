@@ -26,7 +26,7 @@ func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	}
 }
 
-func TestPickerShowsOnlySelectedCommandBelowName(t *testing.T) {
+func TestPickerShowsSelectedCommandInFixedLowerBlock(t *testing.T) {
 	entry := notes.Entry{
 		Desc:    "gateway-production-primary",
 		Address: "operator@192.0.2.10:2222",
@@ -43,8 +43,81 @@ func TestPickerShowsOnlySelectedCommandBelowName(t *testing.T) {
 	if strings.Contains(plain, "· operator@192.0.2.10:2222") {
 		t.Fatalf("selected row still shows the obsolete short target preview: %q", plain)
 	}
-	if !strings.Contains(plain, "ssh -p 2222 operator@192.0.2.10") {
-		t.Fatalf("selected row does not show its full command below: %q", plain)
+	lines := strings.Split(plain, "\n")
+	foundBlock := false
+	for index := 0; index+1 < len(lines); index++ {
+		if strings.TrimSpace(lines[index]) == "command" && strings.TrimSpace(lines[index+1]) == "ssh -p 2222 operator@192.0.2.10" {
+			foundBlock = true
+			break
+		}
+	}
+	if !foundBlock {
+		t.Fatalf("selected command is not shown in the fixed lower block: %q", plain)
+	}
+}
+
+func TestCommandBlockPositionDoesNotMoveWithSelection(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "one", Command: "ssh one", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Command: "ssh two", Actions: []notes.Action{{Cmd: "ssh two"}}},
+		{Desc: "three", Command: "ssh three", Actions: []notes.Action{{Cmd: "ssh three"}}},
+	}
+	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 10, ShowAddress: true})
+	m.width, m.height = 80, 10
+
+	first := strings.Split(stripANSI(m.View()), "\n")
+	m.cursor = 2
+	third := strings.Split(stripANSI(m.View()), "\n")
+	commandLine := func(lines []string) int {
+		for index, line := range lines {
+			if strings.TrimSpace(line) == "command" {
+				return index
+			}
+		}
+		return -1
+	}
+	if commandLine(first) < 0 || commandLine(first) != commandLine(third) {
+		t.Fatalf("command block moved with selection: first=%q third=%q", first, third)
+	}
+	if len(first) != len(third) {
+		t.Fatalf("picker height changed with selection: %d != %d", len(first), len(third))
+	}
+	if !strings.Contains(strings.Join(first, "\n"), "ssh one") || !strings.Contains(strings.Join(third, "\n"), "ssh three") {
+		t.Fatalf("fixed command block did not follow selection: first=%q third=%q", first, third)
+	}
+}
+
+func TestCommandBlockPositionStaysFixedAcrossWrappedRows(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "very-long-selected-name-that-wraps-over-several-physical-lines", Command: "ssh one", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "short", Command: "ssh two", Actions: []notes.Action{{Cmd: "ssh two"}}},
+		{Desc: "東京-router-with-another-very-long-name-that-wraps", Command: "ssh three", Actions: []notes.Action{{Cmd: "ssh three"}}},
+	}
+	for _, layout := range []string{"top", "bottom"} {
+		t.Run(layout, func(t *testing.T) {
+			m := NewPicker(entries, "", DefaultTheme(), Options{Height: 10, Layout: layout, ShowAddress: true})
+			m.width, m.height = 30, 10
+			positions := []int{}
+			heights := []int{}
+			for cursor := range entries {
+				m.cursor = cursor
+				lines := strings.Split(stripANSI(m.View()), "\n")
+				position := -1
+				for index, line := range lines {
+					if strings.TrimSpace(line) == "command" {
+						position = index
+						break
+					}
+				}
+				positions = append(positions, position)
+				heights = append(heights, len(lines))
+			}
+			for index := 1; index < len(positions); index++ {
+				if positions[index] != positions[0] || heights[index] != heights[0] {
+					t.Fatalf("fixed block moved across wrapped rows: positions=%v heights=%v", positions, heights)
+				}
+			}
+		})
 	}
 }
 
@@ -142,15 +215,15 @@ func TestLongAddresslessNameWrapsWhenHeightAllows(t *testing.T) {
 	}
 }
 
-func TestMinimumViewportPreservesCompleteWrappedTarget(t *testing.T) {
+func TestMinimumViewportKeepsNameAndCommandTailInFixedBlock(t *testing.T) {
 	target := "user@final-target.example"
 	entry := notes.Entry{Desc: strings.Repeat("selected-name-", 8), Address: target, Command: "ssh " + target, Actions: []notes.Action{{Cmd: "ssh alias"}}}
 	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 6, ShowAddress: true})
 	m.width, m.height = 20, 6
 	plain := stripANSI(m.View())
 	compact := strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "").Replace(plain)
-	if !strings.Contains(compact, "selected-nam") || !strings.Contains(compact, target) || !strings.Contains(plain, "…") {
-		t.Fatalf("minimum viewport lost the selected name, omission marker, or part of the wrapped target: %q", plain)
+	if !strings.Contains(compact, "selected-name") || !strings.Contains(compact, "command") || !strings.Contains(compact, "mple") || !strings.Contains(plain, "…") {
+		t.Fatalf("minimum viewport lost the selected name, command block, omission marker, or target tail: %q", plain)
 	}
 }
 
@@ -329,14 +402,14 @@ func TestAddressModeKeepsFuzzyMatchHighlighting(t *testing.T) {
 
 func TestSelectedCommandModeFitsMinimumPickerHeight(t *testing.T) {
 	entries := []notes.Entry{
-		{Desc: "one", Address: "operator@192.0.2.1", Kind: "host", Actions: []notes.Action{{Cmd: "ssh one"}}},
-		{Desc: "two", Address: "operator@192.0.2.2", Kind: "host", Actions: []notes.Action{{Cmd: "ssh two"}}},
+		{Desc: "one", Address: "operator@192.0.2.1", Command: "ssh one", Kind: "host", Actions: []notes.Action{{Cmd: "ssh one"}}},
+		{Desc: "two", Address: "operator@192.0.2.2", Command: "ssh two", Kind: "host", Actions: []notes.Action{{Cmd: "ssh two"}}},
 	}
 	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 6, ShowAddress: true})
 	m.width, m.height = 100, 6
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "one") || !strings.Contains(plain, "two") || !strings.Contains(plain, "F1–F5 categories") || strings.Contains(plain, "operator@") || strings.Contains(plain, "…") {
-		t.Fatalf("minimum-height selected-command mode is clipped or shows an obsolete target preview: %q", plain)
+	if !strings.Contains(plain, "one") || !strings.Contains(plain, "command") || !strings.Contains(plain, "ssh one") || !strings.Contains(plain, "F1–F5 categories") || strings.Contains(plain, "operator@") {
+		t.Fatalf("minimum-height fixed command block is clipped or shows an obsolete target preview: %q", plain)
 	}
 }
 
