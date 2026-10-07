@@ -6,7 +6,7 @@ It reads normal OpenSSH config, fuzzy-searches every SSH entry type in one list,
 
 ## Interface
 
-Both sizes use a flat interface without an outer frame or background container. In compact mode it stays near the left edge with a small margin, remains width-capped, and uses exactly as many rows as the current results need. The picker always uses the terminal's alternate screen, so quitting restores the previous shell screen instead of leaving UI rows behind. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
+Both sizes use a flat interface without an outer frame or background container. In compact mode it stays near the left edge with a small margin, remains width-capped, and keeps the configured fixed height even when filtering leaves only a few results, so the command block and footer never jump. The picker always uses the terminal's alternate screen, so quitting restores the previous shell screen instead of leaving UI rows behind. The UI is built with Bubble Tea, Bubbles (`textinput`, `spinner`), and Lip Gloss:
 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;

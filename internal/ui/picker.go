@@ -267,7 +267,7 @@ func (m PickerModel) View() string {
 		if len(body) > limit {
 			body = body[:limit]
 		}
-		if len(commandBlock) > 0 && !m.options.FullScreen {
+		if !m.options.FullScreen {
 			for len(body) < limit {
 				body = append(body, "")
 			}
@@ -642,23 +642,7 @@ func (m PickerModel) effectiveHeight() int {
 }
 
 func (m PickerModel) viewHeight() int {
-	maximum := m.effectiveHeight()
-	if m.options.FullScreen {
-		return maximum
-	}
-	resultLines := 0
-	emptyStyle := lipgloss.NewStyle()
-	for index, match := range m.matches {
-		resultLines += len(m.renderMatchLabelLines(match, match.Entry, m.contentWidth(), index == m.cursor, emptyStyle, emptyStyle, emptyStyle))
-	}
-	if resultLines == 0 {
-		resultLines = 1
-	}
-	desired := resultLines + m.commandBlockHeight() + 3
-	if desired < 8 {
-		desired = 8
-	}
-	return minInt(maximum, desired)
+	return m.effectiveHeight()
 }
 
 func (m PickerModel) inputWidth() int {

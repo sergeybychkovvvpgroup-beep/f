@@ -52,19 +52,20 @@ def save(name, size, title, header, query, rows, selected=0, bottom=False, full=
     top = 62
     footer = "Ctrl+E edit  •  Tab details  •  F1–F5 categories"
     command = rows[selected][2] if 0 <= selected < len(rows) else "—"
+    command_y = size[1] - 104
     if bottom:
         draw.text((x, top), header, fill=FG, font=FONT)
-        y = draw_rows(draw, x, top + LINE, rows, selected)
-        draw.text((x, y + 2), "> " + query, fill=FG, font=FONT)
-        y = draw_command_block(draw, x, y + LINE + 2, command)
+        draw_rows(draw, x, top + LINE, rows, selected)
+        draw.text((x, command_y - LINE), "> " + query, fill=FG, font=FONT)
+        y = draw_command_block(draw, x, command_y, command)
         draw.text((x, y + 2), footer, fill=MUTED, font=FONT)
     else:
         draw.text((x, top), header, fill=FG, font=FONT)
         draw.text((x, top + LINE), "> " + query, fill=FG, font=FONT)
-        y = draw_rows(draw, x, top + 2 * LINE, rows, selected)
+        draw_rows(draw, x, top + 2 * LINE, rows, selected)
         if full:
-            y = size[1] - 3 * LINE - 18
-        y = draw_command_block(draw, x, y + 2, command)
+            command_y = size[1] - 3 * LINE - 16
+        y = draw_command_block(draw, x, command_y, command)
         draw.text((x, y + 2), footer, fill=MUTED, font=FONT)
     image.save(OUT / name, optimize=True)
 
@@ -80,7 +81,7 @@ save("compact-top.png", (1060, 312), "COMPACT · TOP", "COMMANDS   4 / 117", "st
 save("compact-bottom.png", (1060, 312), "COMPACT · BOTTOM", "COMMANDS   4 / 117", "status", commands, selected=0, bottom=True)
 save(
     "compact-top-address.png",
-    (1060, 232),
+    (1060, 312),
     "COMPACT · SELECTED COMMAND",
     "SSH   1 / 117",
     "data",

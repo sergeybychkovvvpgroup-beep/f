@@ -121,6 +121,46 @@ func TestCommandBlockPositionStaysFixedAcrossWrappedRows(t *testing.T) {
 	}
 }
 
+func TestCompactPickerHeightAndLowerLabelsStayFixedWithFewMatches(t *testing.T) {
+	entries := []notes.Entry{
+		{Desc: "alpha", Command: "ssh alpha", Actions: []notes.Action{{Cmd: "ssh alpha"}}},
+		{Desc: "beta", Command: "ssh beta", Actions: []notes.Action{{Cmd: "ssh beta"}}},
+		{Desc: "gamma", Command: "ssh gamma", Actions: []notes.Action{{Cmd: "ssh gamma"}}},
+		{Desc: "delta", Command: "ssh delta", Actions: []notes.Action{{Cmd: "ssh delta"}}},
+		{Desc: "epsilon", Command: "ssh epsilon", Actions: []notes.Action{{Cmd: "ssh epsilon"}}},
+		{Desc: "unique-target", Command: "ssh unique-target", Actions: []notes.Action{{Cmd: "ssh unique-target"}}},
+	}
+	linePosition := func(lines []string, exact string) int {
+		for index, line := range lines {
+			if strings.TrimSpace(line) == exact {
+				return index
+			}
+		}
+		return -1
+	}
+	for _, layout := range []string{"top", "bottom"} {
+		t.Run(layout, func(t *testing.T) {
+			m := NewPicker(entries, "", DefaultTheme(), Options{Height: 12, Layout: layout, ShowAddress: true})
+			m.width, m.height = 80, 24
+			full := strings.Split(stripANSI(m.View()), "\n")
+
+			m.input.SetValue("unique-target")
+			m.refresh()
+			filtered := strings.Split(stripANSI(m.View()), "\n")
+
+			if len(full) != 12 || len(filtered) != 12 {
+				t.Fatalf("compact picker height changed with result count: full=%d filtered=%d", len(full), len(filtered))
+			}
+			if got, want := linePosition(filtered, "command"), linePosition(full, "command"); got != want {
+				t.Fatalf("command label moved with fewer matches: full=%d filtered=%d", want, got)
+			}
+			if got, want := len(filtered)-1, len(full)-1; got != want {
+				t.Fatalf("footer moved with fewer matches: full=%d filtered=%d", want, got)
+			}
+		})
+	}
+}
+
 func TestUnselectedRowsShowOnlyNames(t *testing.T) {
 	entries := []notes.Entry{
 		{Desc: "selected", Address: "root@192.0.2.1", Command: "ssh -o ProxyJump=jump root@192.0.2.1", Actions: []notes.Action{{Cmd: "ssh selected"}}},
@@ -674,7 +714,7 @@ func TestPickerPanelStaysAtLeftAndWidthCappedOnWideTerminal(t *testing.T) {
 	}
 }
 
-func TestCompactPickerShrinksToSmallFilteredResultSet(t *testing.T) {
+func TestCompactPickerKeepsConfiguredHeightWithSmallFilteredResultSet(t *testing.T) {
 	entries := []notes.Entry{
 		{Desc: "one", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh one"}}},
 		{Desc: "two", Kind: "cmd", Actions: []notes.Action{{Cmd: "ssh two"}}},
@@ -685,13 +725,11 @@ func TestCompactPickerShrinksToSmallFilteredResultSet(t *testing.T) {
 	m.width, m.height = 160, 14
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyF3})
 	lines := strings.Split(stripANSI(updated.(PickerModel).View()), "\n")
-	if len(lines) != 7 {
-		t.Fatalf("four-result compact panel has %d lines, want 7 without empty vertical space", len(lines))
+	if len(lines) != 14 {
+		t.Fatalf("four-result compact panel has %d lines, want configured height 14", len(lines))
 	}
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			t.Fatalf("flat compact picker contains an empty gap: %q", strings.Join(lines, "\\n"))
-		}
+	if strings.TrimSpace(lines[len(lines)-1]) == "" {
+		t.Fatalf("compact picker footer is not anchored to the bottom: %q", strings.Join(lines, "\\n"))
 	}
 }
 
@@ -841,8 +879,8 @@ func TestPickerStatusUsesCompactCategoryHint(t *testing.T) {
 			t.Fatalf("compact status still contains expanded hint %q: %q", noisy, plain)
 		}
 	}
-	if got := len(strings.Split(plain, "\n")); got != 4 {
-		t.Fatalf("empty compact picker has %d lines, want 4 without filler", got)
+	if got := len(strings.Split(plain, "\n")); got != 8 {
+		t.Fatalf("empty compact picker has %d lines, want configured height 8", got)
 	}
 }
 
