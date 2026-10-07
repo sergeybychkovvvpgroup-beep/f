@@ -26,7 +26,7 @@ func TestPickerUsesSingleLineResultsByDefault(t *testing.T) {
 	}
 }
 
-func TestPickerShowsAddressInRowsAndSelectedCommandBelow(t *testing.T) {
+func TestPickerShowsOnlySelectedCommandBelowName(t *testing.T) {
 	entry := notes.Entry{
 		Desc:    "gateway-production-primary",
 		Address: "operator@192.0.2.10:2222",
@@ -37,15 +37,18 @@ func TestPickerShowsAddressInRowsAndSelectedCommandBelow(t *testing.T) {
 	m := NewPicker([]notes.Entry{entry}, "", DefaultTheme(), Options{Height: 8, ShowAddress: true})
 	m.width, m.height = 100, 8
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "│ gateway-production-primary · operator@192.0.2.10:2222") {
-		t.Fatalf("selected row does not preserve the full name and short address: %q", plain)
+	if !strings.Contains(plain, "│ gateway-production-primary") {
+		t.Fatalf("selected row lost its full name: %q", plain)
+	}
+	if strings.Contains(plain, "· operator@192.0.2.10:2222") {
+		t.Fatalf("selected row still shows the obsolete short target preview: %q", plain)
 	}
 	if !strings.Contains(plain, "ssh -p 2222 operator@192.0.2.10") {
 		t.Fatalf("selected row does not show its full command below: %q", plain)
 	}
 }
 
-func TestUnselectedRowsDoNotRepeatFullCommands(t *testing.T) {
+func TestUnselectedRowsShowOnlyNames(t *testing.T) {
 	entries := []notes.Entry{
 		{Desc: "selected", Address: "root@192.0.2.1", Command: "ssh -o ProxyJump=jump root@192.0.2.1", Actions: []notes.Action{{Cmd: "ssh selected"}}},
 		{Desc: "unselected-long-name-that-must-stay-complete", Address: "admin@192.0.2.2", Command: "ssh -o ProxyJump=jump admin@192.0.2.2", Actions: []notes.Action{{Cmd: "ssh unselected"}}},
@@ -53,8 +56,11 @@ func TestUnselectedRowsDoNotRepeatFullCommands(t *testing.T) {
 	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 10, ShowAddress: true})
 	m.width, m.height = 100, 10
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "unselected-long-name-that-must-stay-complete · admin@192.0.2.2") {
-		t.Fatalf("unselected row lost its full name or address: %q", plain)
+	if !strings.Contains(plain, "unselected-long-name-that-must-stay-complete") {
+		t.Fatalf("unselected row lost its full name: %q", plain)
+	}
+	if strings.Contains(plain, "admin@192.0.2.2") {
+		t.Fatalf("unselected row shows an address or command preview: %q", plain)
 	}
 	if strings.Count(plain, "ssh -o ProxyJump=jump") != 1 {
 		t.Fatalf("full command should appear only for the selected row: %q", plain)
@@ -118,8 +124,8 @@ func TestSelectedCommandTailIsNotClippedByCompactHeight(t *testing.T) {
 func TestSelectedCommandWrapsSingleLongTokenByDisplayWidth(t *testing.T) {
 	command := strings.Repeat("界", 30)
 	for _, line := range selectedCommandLines(command, 24) {
-		if width := ansi.StringWidth(line); width > 20 {
-			t.Fatalf("selected command line width = %d, want <= 20: %q", width, line)
+		if width := ansi.StringWidth(line); width > 22 {
+			t.Fatalf("selected command line width = %d, want <= 22: %q", width, line)
 		}
 	}
 }
@@ -143,8 +149,8 @@ func TestMinimumViewportPreservesCompleteWrappedTarget(t *testing.T) {
 	m.width, m.height = 20, 6
 	plain := stripANSI(m.View())
 	compact := strings.NewReplacer(" ", "", "\t", "", "\n", "", "\r", "").Replace(plain)
-	if !strings.Contains(compact, target) {
-		t.Fatalf("minimum viewport lost part of wrapped target: %q", plain)
+	if !strings.Contains(compact, "selected-nam") || !strings.Contains(compact, target) || !strings.Contains(plain, "…") {
+		t.Fatalf("minimum viewport lost the selected name, omission marker, or part of the wrapped target: %q", plain)
 	}
 }
 
@@ -282,8 +288,11 @@ func TestCompactHeightIncludesSelectedCommandAndOtherRows(t *testing.T) {
 	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 12, ShowAddress: true})
 	m.width, m.height = 80, 12
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "two · root@192.0.2.2") || !strings.Contains(plain, "three · root@192.0.2.3") {
+	if !strings.Contains(plain, "two") || !strings.Contains(plain, "three") {
 		t.Fatalf("selected command preview hid ordinary rows: %q", plain)
+	}
+	if strings.Contains(plain, "root@192.0.2.2") || strings.Contains(plain, "root@192.0.2.3") {
+		t.Fatalf("ordinary rows still show obsolete short target previews: %q", plain)
 	}
 }
 
@@ -318,7 +327,7 @@ func TestAddressModeKeepsFuzzyMatchHighlighting(t *testing.T) {
 	}
 }
 
-func TestAddressModeFitsMinimumPickerHeight(t *testing.T) {
+func TestSelectedCommandModeFitsMinimumPickerHeight(t *testing.T) {
 	entries := []notes.Entry{
 		{Desc: "one", Address: "operator@192.0.2.1", Kind: "host", Actions: []notes.Action{{Cmd: "ssh one"}}},
 		{Desc: "two", Address: "operator@192.0.2.2", Kind: "host", Actions: []notes.Action{{Cmd: "ssh two"}}},
@@ -326,8 +335,8 @@ func TestAddressModeFitsMinimumPickerHeight(t *testing.T) {
 	m := NewPicker(entries, "", DefaultTheme(), Options{Height: 6, ShowAddress: true})
 	m.width, m.height = 100, 6
 	plain := stripANSI(m.View())
-	if !strings.Contains(plain, "operator@192.0.2.1") || !strings.Contains(plain, "F1–F5 categories") || strings.Contains(plain, "…") {
-		t.Fatalf("minimum-height address mode is clipped: %q", plain)
+	if !strings.Contains(plain, "one") || !strings.Contains(plain, "two") || !strings.Contains(plain, "F1–F5 categories") || strings.Contains(plain, "operator@") || strings.Contains(plain, "…") {
+		t.Fatalf("minimum-height selected-command mode is clipped or shows an obsolete target preview: %q", plain)
 	}
 }
 

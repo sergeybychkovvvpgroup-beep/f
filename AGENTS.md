@@ -30,7 +30,7 @@ User edit action must write back to `~/.ssh/config.d/f_hosts/f.conf`, not a hidd
 
 - UI is Bubble Tea/Bubbles/Lipgloss.
 - `ui_mode: compact | full-screen` is persisted in `~/.config/f/config.yaml`; `f config ui compact|full-screen` changes it.
-- `show_address: true | false` is the compatibility name persisted in the same file; `f config address on|off` toggles `name · user@host` rows. Entry names are never truncated: when a name and target do not fit together, render them as explicit display-cell-safe wrapped lines and count those physical lines in the viewport budget. The selected row additionally renders the composed command below it. Show it completely when it fits; in a smaller viewport, keep output within `picker_height`, mark the omitted middle with `…`, and preserve the final target. `Tab` provides the complete source-style block.
+- `show_address: true | false` is the compatibility name persisted in the same file; `f config address on|off` toggles the selected-only composed-command preview. Ordinary rows show only complete entry names and never show the old `user@host` target preview. Entry names are never truncated: wrap long names on explicit display-cell-safe lines and count those physical lines in the viewport budget. Show the selected command completely when it fits; in a smaller viewport, keep output within `picker_height`, mark the omitted middle with `…`, and preserve the final target. `Tab` provides the complete source-style block.
 - `f config` and `f config show` print the current UI settings, exact config file, SSH inventory paths, and available setters. Every setter prints the persisted YAML key and config path; `f config height N` sets `picker_height` with a minimum of 6.
 - `picker_height` controls compact-mode height; full-screen always uses the terminal height.
 - Legacy `light` migrates to `compact`; legacy `full` migrates to `full-screen`.
@@ -103,7 +103,7 @@ Entries retain internal classification for display and preview metadata, but cla
 - `RemoteCommand` -> commands;
 - `ProxyJump`, `ProxyCommand` -> jumps.
 
-Expanded command generation must preserve every directive in the selected concrete `Host` block. Render `HostName`/`User` as the target and every other directive in source order as shell-safe `-o Key=Value`. Execution still uses the alias. Ordinary rows show the full entry name and compact target, using explicit display-cell-aware wrapped lines when they do not fit together. The selected row adds the composed command below; show it fully when the viewport permits, otherwise use a bounded preview with an explicit `…` omission marker and preserve the final target. `Tab` and `Ctrl+Y` use the complete source-style `Host` block.
+Expanded command generation must preserve every directive in the selected concrete `Host` block. Render `HostName`/`User` as the target and every other directive in source order as shell-safe `-o Key=Value`. Execution still uses the alias. Ordinary rows show only the full entry name, using explicit display-cell-aware wrapping when needed. The selected row alone adds the composed command below; show it fully when the viewport permits, otherwise use a bounded preview with an explicit `…` omission marker and preserve the final target. `Tab` and `Ctrl+Y` use the complete source-style `Host` block.
 
 ## Host storage and sync
 

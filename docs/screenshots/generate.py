@@ -27,16 +27,7 @@ def draw_rows(draw, x, y, rows, selected):
     for i, (name_text, address, command) in enumerate(rows):
         marker = "│" if i == selected else " "
         draw.text((x, y), marker, fill=PINK if i == selected else FG, font=FONT)
-        draw_segments(
-            draw,
-            x + 22,
-            y,
-            [
-                (name_text, MATCH if i == selected else FG, BOLD if i == selected else FONT),
-                (" · ", MUTED, FONT),
-                (address, MUTED, FONT),
-            ],
-        )
+        draw.text((x + 22, y), name_text, fill=MATCH if i == selected else FG, font=BOLD if i == selected else FONT)
         y += LINE
         if i == selected and command:
             for command_line in textwrap.wrap(command, width=82, break_long_words=False, break_on_hyphens=False):
@@ -77,7 +68,7 @@ save("compact-bottom.png", (1060, 312), "COMPACT · BOTTOM", "COMMANDS   4 / 117
 save(
     "compact-top-address.png",
     (1060, 232),
-    "COMPACT · TARGET + SELECTED COMMAND",
+    "COMPACT · SELECTED COMMAND",
     "SSH   1 / 117",
     "data",
     [("data-node-production", "operator@192.0.2.50", "ssh -o ProxyJump=access.example -o ServerAliveInterval=30 operator@192.0.2.50")],

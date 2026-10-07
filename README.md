@@ -11,7 +11,7 @@ Both sizes use a flat interface without an outer frame or background container. 
 - small colored active-category badge and counter;
 - query line without a painted background or reverse-video block cursor, so transparent terminal backgrounds stay clean;
 - match counter;
-- single-line ordinary results with the complete entry name followed by a compact target: `name · user@host`; if both cannot fit, the complete name and target wrap onto explicit viewport-safe lines; the selected result adds the composed command below, preserving the full command when it fits and showing an explicit middle omission while retaining the final target in unusually small viewports; `Tab` shows the complete source-style block; entry names are never shortened;
+- ordinary results show only the complete entry name; the selected result alone adds the composed command below, preserving the full command when it fits and showing an explicit middle omission while retaining the final target in unusually small viewports; `Tab` shows the complete source-style block; entry names are never shortened;
 - colored fuzzy-match characters;
 - slim colored marker for the selected row;
 - `Tab` detail view for imported SSH entries shows the concrete OpenSSH block (`Host` plus every directive) without duplicate service metadata; `Ctrl+Y` prints that same block to the terminal; non-SSH command entries retain their command details;
@@ -31,7 +31,7 @@ f config layout bottom
 f config layout top
 ```
 
-Show compact targets after every complete entry name and the full composed command below the selected entry (the legacy `address` setting name remains for compatibility):
+Show the full composed command only below the selected entry (the legacy `address` setting name remains for compatibility):
 
 ```bash
 f config address on
@@ -89,7 +89,7 @@ f config ui full-screen # full-screen UI
 f config layout bottom  # compact at bottom
 f config layout top     # compact at top
 f config height 20      # compact picker height (minimum 6)
-f config address on     # name · user@host + selected command below
+f config address on     # selected command below; ordinary rows remain name-only
 f setup                 # interactive repository setup and access check
 ```
 

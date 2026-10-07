@@ -1000,15 +1000,15 @@ func (m PickerModel) resultLines(width int, rowStyle, selectedStyle, detailStyle
 		entry := match.Entry
 		selected := index == m.cursor
 		rowLines := m.renderMatchLabelLines(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)
-		if selected {
-			rowLines = fitSelectedLabelLines(rowLines, entry.Address, width, budget, detailStyle)
-		}
 		if selected && m.options.ShowAddress {
-			commandSlots := maxInt(0, budget-len(rowLines))
-			commandLines := fitSelectedCommandLines(selectedCommandLines(entry.Command, width), commandSlots, maxInt(8, width-4))
+			commandLines := fitSelectedCommandLines(entry.Command, selectedCommandLines(entry.Command, width), maxInt(0, budget-1), maxInt(8, width-2))
+			labelBudget := maxInt(1, budget-len(commandLines))
+			rowLines = fitSelectedLabelLines(rowLines, "", width, labelBudget, detailStyle)
 			for _, commandLine := range commandLines {
-				rowLines = append(rowLines, detailStyle.Render("    "+commandLine))
+				rowLines = append(rowLines, detailStyle.Render("  "+commandLine))
 			}
+		} else if selected {
+			rowLines = fitSelectedLabelLines(rowLines, "", width, budget, detailStyle)
 		}
 		rows = append(rows, renderedRow{lines: rowLines})
 	}
@@ -1060,7 +1060,7 @@ func fitSelectedLabelLines(lines []string, target string, width, budget int, det
 	target = strings.TrimSpace(target)
 	if target == "" {
 		if budget == 1 {
-			return []string{detailStyle.Render("…")}
+			return []string{truncateRunes(lines[0], width)}
 		}
 		out := append([]string(nil), lines[:budget-1]...)
 		out = append(out, detailStyle.Render("…"))
@@ -1087,14 +1087,16 @@ func fitSelectedLabelLines(lines []string, target string, width, budget int, det
 
 func (m PickerModel) renderMatchLabelLines(match notes.Match, entry notes.Entry, width int, selected bool, rowStyle, selectedStyle, detailStyle lipgloss.Style) []string {
 	label := strings.Join(strings.Fields(strings.TrimSpace(match.Label)), " ")
-	target := strings.Join(strings.Fields(strings.TrimSpace(entry.Address)), " ")
+	if label == "" {
+		label = strings.Join(strings.Fields(strings.TrimSpace(match.Detail)), " ")
+	}
 	prefix := "  "
 	if selected {
 		prefix = m.theme.SelectedMark + " "
 	}
 	rowWidth := maxInt(12, width)
 	contentWidth := maxInt(8, rowWidth-ansi.StringWidth(prefix))
-	if !m.options.ShowAddress || (target == "" && ansi.StringWidth(label) <= contentWidth) || (target != "" && ansi.StringWidth(label)+3+ansi.StringWidth(target) <= contentWidth) {
+	if ansi.StringWidth(label) <= contentWidth {
 		return []string{m.renderMatchLabelLine(match, entry, width, selected, rowStyle, selectedStyle, detailStyle)}
 	}
 	primaryStyle := rowStyle
@@ -1103,7 +1105,6 @@ func (m PickerModel) renderMatchLabelLines(match notes.Match, entry notes.Entry,
 	}
 	query := strings.TrimSpace(m.input.Value())
 	primaryMatchStyle := primaryStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
-	detailMatchStyle := detailStyle.Foreground(lipgloss.Color(m.theme.MatchFG)).Bold(true)
 	lines := []string{}
 	for index, part := range wrapDisplayWidth(label, contentWidth) {
 		linePrefix := "  "
@@ -1111,14 +1112,6 @@ func (m PickerModel) renderMatchLabelLines(match notes.Match, entry notes.Entry,
 			linePrefix = prefix
 		}
 		lines = append(lines, primaryStyle.Render(linePrefix)+renderFuzzyText(part, query, primaryStyle, primaryMatchStyle))
-	}
-	if target == "" {
-		return lines
-	}
-	targetPrefix := "    "
-	targetWidth := maxInt(4, rowWidth-ansi.StringWidth(targetPrefix))
-	for _, part := range wrapDisplayWidth(target, targetWidth) {
-		lines = append(lines, detailStyle.Render(targetPrefix)+renderFuzzyText(part, query, detailStyle, detailMatchStyle))
 	}
 	return lines
 }
@@ -1134,7 +1127,7 @@ func (m PickerModel) renderMatchLabelLine(match notes.Match, entry notes.Entry, 
 
 	detailText := match.Detail
 	if m.options.ShowAddress {
-		detailText = entry.Address
+		detailText = ""
 	}
 	if m.showInlinePreview() && selected && !entry.HasCmd() {
 		preview := m.cachedPreview(entry)
@@ -1290,7 +1283,7 @@ func selectedCommandLines(command string, width int) []string {
 	if command == "" {
 		return nil
 	}
-	width = maxInt(8, width-4)
+	width = maxInt(8, width-2)
 	words := splitDisplayWords(command)
 	if len(words) == 0 {
 		return nil
@@ -1327,7 +1320,7 @@ func selectedCommandLines(command string, width int) []string {
 	return lines
 }
 
-func fitSelectedCommandLines(lines []string, slots, width int) []string {
+func fitSelectedCommandLines(command string, lines []string, slots, width int) []string {
 	if slots <= 0 || len(lines) == 0 {
 		return nil
 	}
@@ -1336,6 +1329,15 @@ func fitSelectedCommandLines(lines []string, slots, width int) []string {
 	}
 	if slots == 1 {
 		return []string{truncateMiddleRunes(strings.Join(lines, " "), width)}
+	}
+	words := splitDisplayWords(command)
+	if len(words) > 0 {
+		tail := wrapDisplayWidth("… "+words[len(words)-1], width)
+		if len(tail) <= slots {
+			prefixCount := slots - len(tail)
+			out := append([]string(nil), lines[:prefixCount]...)
+			return append(out, tail...)
+		}
 	}
 	out := append([]string(nil), lines[:slots-1]...)
 	last := "… " + truncateLeftWidth(lines[len(lines)-1], maxInt(1, width-2))
