@@ -195,7 +195,12 @@ func editSSHConfigEntry(entry notes.Entry, stdout, stderr io.Writer) error {
 		}
 		return fmt.Errorf("invalid SSH config; restored %s: %w", path, err)
 	}
+	removed := !sshSourceDefinesAlias(path, alias)
 	pushHostsConfig(stderr)
+	if removed {
+		fmt.Fprintf(stdout, "removed SSH host: %s\nfile: %s\n", alias, path)
+		return nil
+	}
 	fmt.Fprintf(stdout, "saved SSH config: %s\nfile: %s\n", alias, path)
 	return nil
 }
@@ -220,9 +225,6 @@ func sshSourceDefinesAlias(path, alias string) bool {
 }
 
 func validateSSHSource(path, alias string) error {
-	if !sshSourceDefinesAlias(path, alias) {
-		return fmt.Errorf("SSH source no longer defines Host %s", alias)
-	}
 	hasExecutableMatch, inspectErr := hosts.SSHSourceHasExecutableMatch(path)
 	if inspectErr != nil {
 		return fmt.Errorf("cannot safely inspect SSH config: %w", inspectErr)

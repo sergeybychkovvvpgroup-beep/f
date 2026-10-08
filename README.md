@@ -136,7 +136,7 @@ This preserves OpenSSH behavior for `ProxyJump`, forwards, `RemoteCommand`, iden
 
 ## Editing and sync
 
-`Ctrl+E` exits the TUI and opens the complete source SSH config in `$EDITOR` (`nano` fallback) at the selected entry's line. For the shared inventory this is `~/.ssh/config.d/f_hosts/f.conf`; the old temporary one-block editor is no longer used. After the editor exits, `f` validates the file with `ssh -G` and restores the original content if validation fails.
+`Ctrl+E` exits the TUI and opens the complete source SSH config in `$EDITOR` (`nano` fallback) at the selected entry's line. For the shared inventory this is `~/.ssh/config.d/f_hosts/f.conf`; the old temporary one-block editor is no longer used. A `Host` alias may be renamed normally. To delete an entry, remove its complete `Host ...` block and save the file. After the editor exits, `f` validates the file with `ssh -G` and restores the original content if validation fails.
 
 When `~/.ssh/config.d/f_hosts` is a Git repository, `f` pulls on startup and commits/pushes after edits or `f add`.
 

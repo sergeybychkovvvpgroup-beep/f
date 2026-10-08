@@ -393,14 +393,104 @@ func TestEditSSHConfigEntryRestoresChangedFileWhenEditorFails(t *testing.T) {
 	}
 }
 
-func TestEditSSHConfigEntryRestoresDeletedSource(t *testing.T) {
+func TestEditSSHConfigEntryAcceptsRemovingSelectedHostBlock(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "f.conf")
+	original := "Host gateway\n  HostName 192.0.2.10\n\nHost retained\n  HostName 192.0.2.20\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(home, "deleting-editor")
+	script := "#!/bin/sh\nfor last do :; done\nprintf 'Host retained\\n  HostName 192.0.2.20\\n' > \"$last\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{SourcePath: path, SourceLine: 1, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	var stdout, stderr bytes.Buffer
+	if err := editSSHConfigEntry(entry, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	edited, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if strings.Contains(string(edited), "Host gateway") || !strings.Contains(string(edited), "Host retained") {
+		t.Fatalf("selected Host block was not removed cleanly:\n%s", edited)
+	}
+	if !strings.Contains(stdout.String(), "removed SSH host: gateway") {
+		t.Fatalf("delete confirmation = %q", stdout.String())
+	}
+}
+
+func TestEditSSHConfigEntryAcceptsRenamingSelectedHostBlock(t *testing.T) {
 	home := t.TempDir()
 	path := filepath.Join(home, "f.conf")
 	original := "Host gateway\n  HostName 192.0.2.10\n"
 	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	editor := filepath.Join(home, "deleting-editor")
+	editor := filepath.Join(home, "renaming-editor")
+	script := "#!/bin/sh\nfor last do :; done\nprintf 'Host renamed-gateway\\n  HostName 192.0.2.10\\n' > \"$last\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{SourcePath: path, SourceLine: 1, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	var stdout, stderr bytes.Buffer
+	if err := editSSHConfigEntry(entry, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	edited, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if strings.Contains(string(edited), "Host gateway") || !strings.Contains(string(edited), "Host renamed-gateway") {
+		t.Fatalf("selected Host block was not renamed cleanly:\n%s", edited)
+	}
+	if !strings.Contains(stdout.String(), "removed SSH host: gateway") {
+		t.Fatalf("rename confirmation = %q", stdout.String())
+	}
+}
+
+func TestEditSSHConfigEntryAcceptsRemovingOnlyHostBlock(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "f.conf")
+	original := "Host gateway\n  HostName 192.0.2.10\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(home, "emptying-editor")
+	script := "#!/bin/sh\nfor last do :; done\n: > \"$last\"\n"
+	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("EDITOR", editor)
+	entry := notes.Entry{SourcePath: path, SourceLine: 1, Actions: []notes.Action{{Cmd: "ssh gateway"}}}
+	var stdout, stderr bytes.Buffer
+	if err := editSSHConfigEntry(entry, &stdout, &stderr); err != nil {
+		t.Fatal(err)
+	}
+	edited, readErr := os.ReadFile(path)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if len(edited) != 0 {
+		t.Fatalf("source file was not left empty: %q", edited)
+	}
+	if !strings.Contains(stdout.String(), "removed SSH host: gateway") {
+		t.Fatalf("delete confirmation = %q", stdout.String())
+	}
+}
+
+func TestEditSSHConfigEntryRestoresDeletedSourceFile(t *testing.T) {
+	home := t.TempDir()
+	path := filepath.Join(home, "f.conf")
+	original := "Host gateway\n  HostName 192.0.2.10\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	editor := filepath.Join(home, "deleting-file-editor")
 	script := "#!/bin/sh\nfor last do :; done\nrm -f \"$last\"\n"
 	if err := os.WriteFile(editor, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
